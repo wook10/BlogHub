@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>VelogHub</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <h1>VelogHub</h1>
+
+  <section id="login" hidden>
+    <p>velog 글을 저장할 GitHub 계정으로 로그인하세요.</p>
+    <button id="login-btn">GitHub로 로그인</button>
+  </section>
+
+  <section id="pending" hidden>
+    <p>GitHub에서 아래 코드를 입력하세요.</p>
+    <p id="user-code" class="code"></p>
+    <button id="open-btn">코드 복사하고 GitHub 열기</button>
+  </section>
+
+  <section id="main" hidden>
+    <p><b id="user"></b> 로그인됨</p>
+    <p>연결된 저장소: <b id="current-repo">없음</b></p>
+
+    <label for="repo-select">기존 저장소 선택</label>
+    <div class="row">
+      <select id="repo-select"></select>
+      <button id="select-btn">연결</button>
+    </div>
+
+    <form id="create-form">
+      <label for="repo-name">새 저장소 만들기</label>
+      <div class="row">
+        <input id="repo-name" required placeholder="my-velog" pattern="[A-Za-z0-9._-]+">
+        <button>만들기</button>
+      </div>
+      <label><input type="checkbox" id="repo-private"> 비공개 저장소</label>
+    </form>
+
+    <button id="logout-btn" class="link">로그아웃</button>
+  </section>
+
+  <p id="error" role="alert"></p>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
