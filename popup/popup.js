@@ -14,7 +14,12 @@ async function send(msg) {
 let reposLoaded = false;
 
 async function render() {
-  const { token, user, repo, pending, authError } = await store.get();
+  const { token, user, repo, pending, authError, lastSync } = await store.get();
+  if (lastSync) {
+    const time = new Date(lastSync.time).toLocaleString();
+    $('last-sync').textContent = `최근 기록 (${time}) "${lastSync.title}": ${lastSync.message}`;
+    $('last-sync').className = lastSync.ok ? 'ok' : 'fail';
+  }
   const waiting = pending && pending.expiresAt > Date.now();
 
   $('login').hidden = !!token || waiting;

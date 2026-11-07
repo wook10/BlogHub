@@ -47,6 +47,7 @@ export async function pollToken(deviceCode, interval, { wait = sleep, onTick } =
 async function api(token, path, { method = 'GET', body } = {}) {
   const res = await fetch(API + path, {
     method,
+    cache: 'no-store', // 캐시된 옛 sha로 덮어쓰다 충돌(409)나지 않게
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${token}`,
@@ -56,8 +57,28 @@ async function api(token, path, { method = 'GET', body } = {}) {
   });
   const data = await res.json().catch(() => ({}));
   // 422 같은 오류는 message가 뭉뚱그려져 있고, 진짜 이유는 errors[0].message에 있다.
-  if (!res.ok) throw new Error(data.errors?.[0]?.message ?? data.message ?? `GitHub API 실패 (${res.status})`);
+  if (!res.ok) {
+    const message = data.errors?.[0]?.message ?? data.message ?? `GitHub API 실패 (${res.status})`;
+    throw Object.assign(new Error(message), { status: res.status });
+  }
   return data;
+}
+
+const toBase64 = (text) =>
+  btoa(Array.from(new TextEncoder().encode(text), (b) => String.fromCharCode(b)).join(''));
+
+// 파일을 만들거나 덮어써서 커밋한다. 이미 있던 파일이면 true.
+export async function putFile(token, repo, path, text, message) {
+  const url = `/repos/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
+  const sha = await api(token, url).then(
+    (file) => file.sha,
+    (e) => {
+      if (e.status === 404) return undefined;
+      throw e;
+    },
+  );
+  await api(token, url, { method: 'PUT', body: { message: message(!!sha), content: toBase64(text), sha } });
+  return !!sha;
 }
 
 export const getUser = (token) => api(token, '/user');

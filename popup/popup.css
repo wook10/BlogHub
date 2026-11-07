@@ -5,4 +5,6 @@ label { display: block; margin-top: 12px; }
 .row select, .row input { flex: 1; min-width: 0; }
 .code { font: bold 24px monospace; letter-spacing: 2px; text-align: center; }
 .link { margin-top: 16px; background: none; border: none; padding: 0; color: #666; text-decoration: underline; cursor: pointer; }
-#error { color: #c00; }
+#error, .fail { color: #c00; }
+.ok { color: #0a7d55; }
+#last-sync { margin-top: 16px; font-size: 13px; }

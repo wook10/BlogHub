@@ -24,3 +24,28 @@ test('알 수 없는 응답이면 멈추지 않고 실패한다', async () => {
   mockFetch([{}]);
   await assert.rejects(pollToken('dc', 5, { wait: async () => {} }), /실패/);
 });
+
+test('putFile: 없는 파일은 sha 없이 만들고, 있는 파일은 sha를 넣어 덮어쓴다', async () => {
+  const { putFile } = await import('../src/github.js');
+  const calls = [];
+  const run = async (getStatus) => {
+    calls.length = 0;
+    globalThis.fetch = async (url, init) => {
+      calls.push(init);
+      const status = init.method === 'GET' ? getStatus : 200;
+      return { ok: status < 300, status, json: async () => (status === 200 ? { sha: 'abc' } : {}) };
+    };
+    return putFile('t', 'me/repo', 'posts/한글.md', '본문', (exists) => (exists ? '수정' : '새 글'));
+  };
+
+  assert.equal(await run(404), false);
+  const created = JSON.parse(calls[1].body);
+  assert.equal(created.sha, undefined);
+  assert.equal(created.message, '새 글');
+  assert.equal(Buffer.from(created.content, 'base64').toString(), '본문');
+
+  assert.equal(await run(200), true);
+  assert.equal(JSON.parse(calls[1].body).sha, 'abc');
+
+  await assert.rejects(run(500)); // 404가 아닌 오류는 덮어쓰지 않고 실패
+});
