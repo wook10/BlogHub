@@ -33,7 +33,13 @@ test('시리즈가 없으면 series 줄을 뺀다', () => {
   assert.doesNotMatch(toMarkdown({ ...post, series: null }, '2026-11-07'), /series:/);
 });
 
+test('시리즈 글은 시리즈 폴더에, 아니면 posts 바로 아래에 둔다', () => {
+  assert.equal(filePath(post, '2026-11-07'), 'posts/리액트 공부/2026-11-07-React-상태-관리.md');
+  assert.equal(filePath({ ...post, series: null }, '2026-11-07'), 'posts/2026-11-07-React-상태-관리.md');
+});
+
 test('파일 경로에서 경로를 깨는 문자를 바꾼다', () => {
-  assert.equal(filePath(post, '2026-11-07'), 'posts/2026-11-07-React-상태-관리.md');
   assert.equal(filePath({ url_slug: 'a/b?c d' }, '2026-11-07'), 'posts/2026-11-07-a-b-c-d.md');
+  assert.equal(filePath({ url_slug: 'x', series: '../비밀' }, '2026-11-07'), 'posts/-비밀/2026-11-07-x.md');
+  assert.equal(filePath({ url_slug: 'x', series: '..' }, '2026-11-07'), 'posts/untitled/2026-11-07-x.md');
 });

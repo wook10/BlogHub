@@ -49,3 +49,24 @@ test('putFile: 없는 파일은 sha 없이 만들고, 있는 파일은 sha를 �
 
   await assert.rejects(run(500)); // 404가 아닌 오류는 덮어쓰지 않고 실패
 });
+
+test('deleteFile: 있는 파일만 sha를 넣어 지우고, 없으면 아무것도 안 한다', async () => {
+  const { deleteFile } = await import('../src/github.js');
+  const calls = [];
+  const run = async (getStatus) => {
+    calls.length = 0;
+    globalThis.fetch = async (url, init) => {
+      calls.push(init);
+      const status = init.method === 'GET' ? getStatus : 200;
+      return { ok: status < 300, status, json: async () => (status === 200 ? { sha: 'abc' } : {}) };
+    };
+    await deleteFile('t', 'me/repo', 'posts/a.md', '지움');
+  };
+
+  await run(200);
+  assert.equal(calls[1].method, 'DELETE');
+  assert.deepEqual(JSON.parse(calls[1].body), { message: '지움', sha: 'abc' });
+
+  await run(404);
+  assert.equal(calls.length, 1); // 확인만 하고 지우지 않음
+});

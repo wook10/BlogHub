@@ -35,8 +35,12 @@
         <input id="repo-name" required placeholder="my-velog" pattern="[A-Za-z0-9._-]+">
         <button>만들기</button>
       </div>
-      <label><input type="checkbox" id="repo-private"> 비공개 저장소</label>
+      <label><input type="checkbox" id="repo-private"> 새 저장소를 비공개로 만들기</label>
     </form>
+
+    <h2>설정</h2>
+    <label><input type="checkbox" id="save-private"> velog 비공개 글도 GitHub에 저장</label>
+    <p class="hint">공개 저장소라면 비공개 글이 누구에게나 보여요.</p>
 
     <p id="last-sync">아직 저장한 글이 없어요.</p>
 

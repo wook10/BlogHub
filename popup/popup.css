@@ -1,6 +1,7 @@
 body { width: 300px; margin: 0; padding: 12px 16px; font: 14px system-ui, sans-serif; }
 h1 { font-size: 18px; margin: 0 0 8px; }
 label { display: block; margin-top: 12px; }
+h2 { font-size: 14px; margin: 20px 0 0; padding-top: 12px; border-top: 1px solid #ddd; }
 .row { display: flex; gap: 6px; margin-top: 4px; }
 .row select, .row input { flex: 1; min-width: 0; }
 .code { font: bold 24px monospace; letter-spacing: 2px; text-align: center; }
@@ -8,3 +9,4 @@ label { display: block; margin-top: 12px; }
 #error, .fail { color: #c00; }
 .ok { color: #0a7d55; }
 #last-sync { margin-top: 16px; font-size: 13px; }
+.hint { margin: 2px 0 0 22px; font-size: 12px; color: #666; }

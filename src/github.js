@@ -67,18 +67,31 @@ async function api(token, path, { method = 'GET', body } = {}) {
 const toBase64 = (text) =>
   btoa(Array.from(new TextEncoder().encode(text), (b) => String.fromCharCode(b)).join(''));
 
-// 파일을 만들거나 덮어써서 커밋한다. 이미 있던 파일이면 true.
-export async function putFile(token, repo, path, text, message) {
-  const url = `/repos/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
-  const sha = await api(token, url).then(
+const contentsUrl = (repo, path) => `/repos/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
+
+// 파일이 없으면 undefined
+const getSha = (token, url) =>
+  api(token, url).then(
     (file) => file.sha,
     (e) => {
       if (e.status === 404) return undefined;
       throw e;
     },
   );
+
+// 파일을 만들거나 덮어써서 커밋한다. 이미 있던 파일이면 true.
+export async function putFile(token, repo, path, text, message) {
+  const url = contentsUrl(repo, path);
+  const sha = await getSha(token, url);
   await api(token, url, { method: 'PUT', body: { message: message(!!sha), content: toBase64(text), sha } });
   return !!sha;
+}
+
+// 파일을 지우는 커밋을 만든다. 이미 없으면 아무것도 안 한다.
+export async function deleteFile(token, repo, path, message) {
+  const url = contentsUrl(repo, path);
+  const sha = await getSha(token, url);
+  if (sha) await api(token, url, { method: 'DELETE', body: { message, sha } });
 }
 
 export const getUser = (token) => api(token, '/user');

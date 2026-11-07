@@ -1,4 +1,4 @@
-import { requestDeviceCode, pollToken, getUser, listRepos, createRepo, putFile } from './github.js';
+import { requestDeviceCode, pollToken, getUser, listRepos, createRepo, putFile, deleteFile } from './github.js';
 import { toMarkdown, filePath } from './markdown.js';
 
 const store = chrome.storage.local;
@@ -7,20 +7,50 @@ const isPost = (p) =>
   p && ['id', 'title', 'body', 'username', 'url_slug', 'released_at'].every((k) => typeof p[k] === 'string') &&
   Array.isArray(p.tags);
 
-async function publish(post, token) {
-  const { repo, paths = {} } = await store.get(['repo', 'paths']);
+// 연결된 저장소와, 그 저장소에 저장한 글 id → 파일 경로 기록
+async function target(token, id) {
+  const { repo, paths = {}, savePrivate = false } = await store.get(['repo', 'paths', 'savePrivate']);
   if (!token || !repo) throw new Error('VelogHub 팝업에서 로그인하고 저장소를 연결해 주세요.');
-  // shortcut: 비공개 글은 항상 건너뜀 (공개 저장소에 새지 않게), 3단계에서 설정으로 바꿈
-  if (post.is_private) return '비공개 글이라 GitHub에 저장하지 않았어요.';
+  const saved = paths[repo] ?? {};
+  const remember = (path) => {
+    const next = { ...saved };
+    if (path) next[id] = path;
+    else delete next[id];
+    return store.set({ paths: { ...paths, [repo]: next } });
+  };
+  // 2단계 때는 저장소 구분 없이 paths[id]에 경로를 저장했다
+  const legacy = typeof paths[id] === 'string' ? paths[id] : undefined;
+  return { repo, savePrivate, oldPath: saved[id] ?? legacy, remember };
+}
+
+async function remove(id, token) {
+  const { repo, oldPath, remember } = await target(token, id);
+  if (!oldPath) return 'GitHub에 저장된 적 없는 글이라 지울 파일이 없어요.';
+  await deleteFile(token, repo, oldPath, `[velog] 삭제: ${oldPath.split('/').pop()}`);
+  await remember(null);
+  return 'GitHub에서도 지웠어요.';
+}
+
+async function publish(post, token) {
+  const { repo, savePrivate, oldPath, remember } = await target(token, post.id);
+
+  if (post.is_private && !savePrivate) {
+    if (!oldPath) return '비공개 글이라 GitHub에 저장하지 않았어요.';
+    // 저장했던 글을 비공개로 바꿨으면 저장소에서도 지운다
+    await deleteFile(token, repo, oldPath, `[velog] ${post.title} 비공개 전환`);
+    await remember(null);
+    return '비공개로 바뀐 글이라 GitHub에서 지웠어요.';
+  }
 
   const date = new Date(post.released_at).toLocaleDateString('sv-SE'); // YYYY-MM-DD, 내 컴퓨터 시간대
-  // 글 주소(slug)를 바꿔 수정해도 처음 저장한 파일을 계속 쓴다
-  const path = paths[post.id] ?? filePath(post, date);
-  const updated = await putFile(token, repo, path, toMarkdown(post, date), (exists) =>
-    `[velog] ${post.title}${exists ? ' 수정' : ''}`,
+  const path = filePath(post, date);
+  const existed = await putFile(token, repo, path, toMarkdown(post, date), (exists) =>
+    `[velog] ${post.title}${exists || oldPath ? ' 수정' : ''}`,
   );
-  await store.set({ paths: { ...paths, [post.id]: path } });
-  return updated ? 'GitHub에 수정 내용 저장됨' : 'GitHub에 저장됨';
+  // 시리즈나 글 주소가 바뀌어 경로가 달라졌으면 예전 파일을 지운다
+  if (oldPath && oldPath !== path) await deleteFile(token, repo, oldPath, `[velog] ${post.title} 이동`);
+  await remember(path);
+  return existed || oldPath ? 'GitHub에 수정 내용 저장됨' : 'GitHub에 저장됨';
 }
 
 async function waitForLogin({ device_code, interval }) {
@@ -61,6 +91,9 @@ async function handle(msg, sender) {
         if (!isPost(msg.post)) throw new Error('글 정보 형식이 달라요 (velog가 바뀌었을 수 있어요)');
         return publish(msg.post, token);
       });
+    case 'remove':
+      if (!sender.url?.startsWith('https://velog.io/') || typeof msg.id !== 'string') throw new Error('잘못된 삭제 요청');
+      return record('삭제한 글', () => remove(msg.id, token));
     case 'login': {
       const code = await requestDeviceCode();
       const pending = {

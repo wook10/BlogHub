@@ -15,7 +15,10 @@ window.addEventListener('message', async (e) => {
   // 같은 창에서 온 VelogHub 메시지만 받는다 (광고 iframe 등은 제외)
   if (e.source !== window || e.data?.source !== 'veloghub') return;
   try {
-    const res = await chrome.runtime.sendMessage({ type: 'publish', post: e.data.post, error: e.data.error });
+    const { post, error, removedId } = e.data;
+    const res = await chrome.runtime.sendMessage(
+      removedId ? { type: 'remove', id: removedId } : { type: 'publish', post, error },
+    );
     toast(res.ok ? res.data : `GitHub 저장 실패: ${res.error}`, res.ok);
   } catch {
     toast('VelogHub가 업데이트됐어요. 페이지를 새로고침해 주세요.', false);

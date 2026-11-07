@@ -14,7 +14,8 @@ async function send(msg) {
 let reposLoaded = false;
 
 async function render() {
-  const { token, user, repo, pending, authError, lastSync } = await store.get();
+  const { token, user, repo, pending, authError, lastSync, savePrivate = false } = await store.get();
+  $('save-private').checked = savePrivate;
   if (lastSync) {
     const time = new Date(lastSync.time).toLocaleString();
     $('last-sync').textContent = `최근 기록 (${time}) "${lastSync.title}": ${lastSync.message}`;
@@ -67,6 +68,8 @@ $('create-form').onsubmit = async (e) => {
     $('repo-name').value = '';
   }
 };
+
+$('save-private').onchange = (e) => store.set({ savePrivate: e.target.checked });
 
 $('logout-btn').onclick = () => {
   reposLoaded = false;

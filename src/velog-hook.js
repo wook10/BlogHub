@@ -2,7 +2,7 @@
 // velog가 API를 바꾸면 이 파일만 고치면 된다.
 (() => {
   const GRAPHQL = 'https://v2.velog.io/graphql';
-  const PUBLISH_OPS = ['WritePost', 'EditPost'];
+  const WATCHED_OPS = ['WritePost', 'EditPost', 'RemovePost'];
   const POST_INFO = `query ($username: String, $url_slug: String) {
     post(username: $username, url_slug: $url_slug) { released_at series { name } }
   }`;
@@ -20,6 +20,10 @@
 
   async function report(request, response) {
     const v = request.variables ?? {};
+    if (request.operationName === 'RemovePost') {
+      if (!response.data?.removePost) throw new Error(response.errors?.[0]?.message ?? 'velog에서 삭제하지 못했어요');
+      return window.postMessage({ source: 'veloghub', removedId: v.id }, location.origin);
+    }
     if (v.is_temp) return; // 임시저장은 커밋하지 않는다
     console.info('[VelogHub] 출간 감지', request.operationName);
     const saved = response.data?.writePost ?? response.data?.editPost;
@@ -58,7 +62,7 @@
     } catch {
       return response; // 가로채기에서 무슨 일이 생겨도 velog 동작은 막지 않는다
     }
-    if (PUBLISH_OPS.includes(request.operationName)) {
+    if (WATCHED_OPS.includes(request.operationName)) {
       try {
         // velog(Apollo)는 응답을 다 읽은 뒤 요청을 abort하는데, 그러면 아직 안 읽은 복사본도 끊긴다.
         // 그래서 응답을 넘기기 전에 복사본을 먼저 다 읽어 둔다.
