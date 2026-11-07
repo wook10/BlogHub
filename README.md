@@ -18,7 +18,8 @@ src/background.js  서비스 워커: 로그인, 저장소 연결, 출간된 글 
 src/github.js      GitHub 인증(Device Flow)과 API 호출
 src/velog-hook.js  velog 페이지에서 출간 요청을 가로챔 (velog 요청 형식은 여기에만 있음)
 src/content.js     출간 소식을 백그라운드로 넘기고 "GitHub에 저장됨" 알림 표시
-src/markdown.js    front matter를 붙인 마크다운과 파일 경로 만들기
+src/markdown.js    front matter를 붙인 마크다운, 파일·이미지 경로 만들기
+src/velog.js       과거 글 전체 불러오기 (velog GraphQL)
 src/config.js      OAuth Client ID
 popup/             확장 팝업 화면
 tests/             node --test 로 실행

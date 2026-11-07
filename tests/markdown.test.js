@@ -43,3 +43,20 @@ test('파일 경로에서 경로를 깨는 문자를 바꾼다', () => {
   assert.equal(filePath({ url_slug: 'x', series: '../비밀' }, '2026-11-07'), 'posts/-비밀/2026-11-07-x.md');
   assert.equal(filePath({ url_slug: 'x', series: '..' }, '2026-11-07'), 'posts/untitled/2026-11-07-x.md');
 });
+
+test('본문에서 velog 이미지만 중복 없이 찾는다', async () => {
+  const { findImages } = await import('../src/markdown.js');
+  const a = 'https://velog.velcdn.com/images/u/post/1/image.png';
+  const body = `![](${a})\n![](${a})\n<img src="https://images.velog.io/x.jpg">\n![](https://other.com/y.png)`;
+  assert.deepEqual(findImages(body), [a, 'https://images.velog.io/x.jpg']);
+});
+
+test('이미지 폴더, 이름, 상대 링크', async () => {
+  const { imageDir, imageName, relativeLink } = await import('../src/markdown.js');
+  assert.equal(imageDir('posts/리액트 공부/2026-11-08-a.md'), 'posts/images/2026-11-08-a');
+  assert.equal(imageName('https://x/image.PNG', 0), '1.png');
+  assert.equal(imageName('https://x/blob', 1, 'image/svg+xml'), '2.svg');
+  assert.equal(imageName('https://x/blob', 2, 'application/octet-stream'), '3.png');
+  assert.equal(relativeLink('posts/a.md', 'posts/images/a/1.png'), 'images/a/1.png');
+  assert.equal(relativeLink('posts/리액트/a.md', 'posts/images/a/1.png'), '../images/a/1.png');
+});

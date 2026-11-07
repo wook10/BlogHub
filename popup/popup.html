@@ -41,6 +41,15 @@
     <h2>설정</h2>
     <label><input type="checkbox" id="save-private"> velog 비공개 글도 GitHub에 저장</label>
     <p class="hint">공개 저장소라면 비공개 글이 누구에게나 보여요.</p>
+    <label><input type="checkbox" id="backup-images"> velog 이미지도 저장소에 백업</label>
+
+    <h2>과거 글 가져오기</h2>
+    <label for="velog-user">velog 아이디</label>
+    <div class="row">
+      <input id="velog-user" placeholder="velog 아이디">
+      <button id="import-btn">가져오기</button>
+    </div>
+    <p class="hint" id="import-status" role="status">공개 글만 가져와요.</p>
 
     <p id="last-sync">아직 저장한 글이 없어요.</p>
 

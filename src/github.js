@@ -64,34 +64,59 @@ async function api(token, path, { method = 'GET', body } = {}) {
   return data;
 }
 
-const toBase64 = (text) =>
-  btoa(Array.from(new TextEncoder().encode(text), (b) => String.fromCharCode(b)).join(''));
-
-const contentsUrl = (repo, path) => `/repos/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
-
-// 파일이 없으면 undefined
-const getSha = (token, url) =>
-  api(token, url).then(
-    (file) => file.sha,
-    (e) => {
-      if (e.status === 404) return undefined;
-      throw e;
-    },
-  );
-
-// 파일을 만들거나 덮어써서 커밋한다. 이미 있던 파일이면 true.
-export async function putFile(token, repo, path, text, message) {
-  const url = contentsUrl(repo, path);
-  const sha = await getSha(token, url);
-  await api(token, url, { method: 'PUT', body: { message: message(!!sha), content: toBase64(text), sha } });
-  return !!sha;
+function bytesToBase64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
 }
 
-// 파일을 지우는 커밋을 만든다. 이미 없으면 아무것도 안 한다.
-export async function deleteFile(token, repo, path, message) {
-  const url = contentsUrl(repo, path);
-  const sha = await getSha(token, url);
-  if (sha) await api(token, url, { method: 'DELETE', body: { message, sha } });
+const deleted = (path) => ({ path, mode: '100644', type: 'blob', sha: null });
+
+// 여러 파일 변경을 커밋 하나로 만든다 (Git Data API).
+// files: { 경로: 문자열 | Uint8Array(이미지) | null(삭제) }
+// deleteDirs: 이 폴더 안의 파일 중 files에 없는 것은 지운다 (글에서 빠진 이미지 정리)
+// message: 문자열, 또는 커밋 전 저장소에 있던 경로 Set을 받아 문자열을 돌려주는 함수
+// 반환: 커밋 전 저장소에 있던 경로 Set. 바뀐 게 없으면 커밋하지 않는다.
+export async function commitFiles(token, repo, { files, deleteDirs = [], message }) {
+  const { default_branch: branch } = await api(token, `/repos/${repo}`);
+  const ref = await api(token, `/repos/${repo}/git/ref/heads/${branch}`);
+  const head = await api(token, `/repos/${repo}/git/commits/${ref.object.sha}`);
+  const tree = await api(token, `/repos/${repo}/git/trees/${head.tree.sha}?recursive=1`);
+  // 목록이 잘리면 무엇을 지울지 확신할 수 없으니 멈춘다 (파일 10만 개 이상인 저장소)
+  if (tree.truncated) throw new Error('저장소 파일이 너무 많아요.');
+  const has = new Set(tree.tree.filter((e) => e.type === 'blob').map((e) => e.path));
+
+  const entries = [];
+  for (const [path, content] of Object.entries(files)) {
+    // 없는 파일을 지우라고 하면 GitHub가 오류를 내므로 있는 것만 지운다
+    if (content === null) {
+      if (has.has(path)) entries.push(deleted(path));
+    } else if (typeof content === 'string') {
+      entries.push({ path, mode: '100644', type: 'blob', content });
+    } else {
+      const blob = await api(token, `/repos/${repo}/git/blobs`, {
+        method: 'POST',
+        body: { content: bytesToBase64(content), encoding: 'base64' },
+      });
+      entries.push({ path, mode: '100644', type: 'blob', sha: blob.sha });
+    }
+  }
+  for (const path of has) {
+    if (!(path in files) && deleteDirs.some((dir) => path.startsWith(`${dir}/`))) entries.push(deleted(path));
+  }
+  if (!entries.length) return has;
+
+  const newTree = await api(token, `/repos/${repo}/git/trees`, {
+    method: 'POST',
+    body: { base_tree: head.tree.sha, tree: entries },
+  });
+  if (newTree.sha === head.tree.sha) return has; // 내용이 그대로면 빈 커밋을 만들지 않는다
+  const commit = await api(token, `/repos/${repo}/git/commits`, {
+    method: 'POST',
+    body: { message: typeof message === 'function' ? message(has) : message, tree: newTree.sha, parents: [ref.object.sha] },
+  });
+  await api(token, `/repos/${repo}/git/refs/heads/${branch}`, { method: 'PATCH', body: { sha: commit.sha } });
+  return has;
 }
 
 export const getUser = (token) => api(token, '/user');

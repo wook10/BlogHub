@@ -14,8 +14,13 @@ async function send(msg) {
 let reposLoaded = false;
 
 async function render() {
-  const { token, user, repo, pending, authError, lastSync, savePrivate = false } = await store.get();
+  const { token, user, repo, pending, authError, lastSync, savePrivate = false, backupImages = true, velogUser, importStatus } =
+    await store.get();
   $('save-private').checked = savePrivate;
+  $('backup-images').checked = backupImages;
+  if (velogUser && !$('velog-user').value) $('velog-user').value = velogUser;
+  $('import-btn').disabled = !!importStatus;
+  $('import-status').textContent = importStatus ?? '공개 글만 가져와요.';
   if (lastSync) {
     const time = new Date(lastSync.time).toLocaleString();
     $('last-sync').textContent = `최근 기록 (${time}) "${lastSync.title}": ${lastSync.message}`;
@@ -70,6 +75,8 @@ $('create-form').onsubmit = async (e) => {
 };
 
 $('save-private').onchange = (e) => store.set({ savePrivate: e.target.checked });
+$('backup-images').onchange = (e) => store.set({ backupImages: e.target.checked });
+$('import-btn').onclick = () => send({ type: 'import', username: $('velog-user').value }).catch(() => {});
 
 $('logout-btn').onclick = () => {
   reposLoaded = false;

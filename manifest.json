@@ -10,5 +10,11 @@
     { "matches": ["https://velog.io/*"], "js": ["src/content.js"], "run_at": "document_start" }
   ],
   "permissions": ["storage"],
-  "host_permissions": ["https://github.com/*", "https://api.github.com/*"]
+  "host_permissions": [
+    "https://github.com/*",
+    "https://api.github.com/*",
+    "https://v2.velog.io/*",
+    "https://velog.velcdn.com/*",
+    "https://images.velog.io/*"
+  ]
 }
