@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "VelogHub",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "velog에 출간한 글을 GitHub 저장소에 자동으로 커밋합니다.",
   "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
   "action": {
