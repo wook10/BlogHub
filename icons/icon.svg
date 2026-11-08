@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <rect width="128" height="128" rx="28" fill="#1f2328"/>
-  <path d="M88 42 A32 32 0 1 0 96 66 H68" fill="none" stroke="#fff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- PNG 아이콘은 Windows의 Georgia 글꼴로 그렸다. 글꼴이 없는 곳에서는 이 SVG가 조금 다르게 보일 수 있다. -->
+  <rect width="128" height="128" rx="14" fill="#1f2328"/>
+  <text x="64" y="98" text-anchor="middle" font-family="Georgia, serif" font-size="96" font-weight="700" font-style="italic" fill="#fff">G</text>
 </svg>
