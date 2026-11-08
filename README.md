@@ -25,8 +25,6 @@
 
 [Edge 스토어에서 설치](https://microsoftedge.microsoft.com/addons/detail/fjknniibbbgfommmdfmdaaanfkckbnjp) → **받기** → **확장 추가**
 
-지금은 심사 중이라 링크가 열리지 않을 수 있습니다. 그럴 땐 아래처럼 직접 불러오세요.
-
 ### 직접 불러오기 (크롬·엣지)
 
 1. 이 저장소를 내려받습니다. (`Code` → `Download ZIP` 후 압축 풀기, 또는 `git clone`)
