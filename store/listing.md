@@ -87,14 +87,15 @@ BlogHub saves posts that the user publishes on velog (https://velog.io) or Tisto
 
 How to test:
 1. Click the toolbar icon and press "GitHub로 로그인" (Sign in with GitHub). A device code appears; enter it at https://github.com/login/device and approve. (GitHub OAuth Device Flow; no client secret is shipped).
-2. In the popup, create a new repository (e.g. "my-velog") or pick an existing one.
+2. In the popup, create or pick a repository.
 3. Sign in to velog.io (any GitHub/Google account works), write a post and press "출간하기" (Publish).
-4. A green "GitHub에 저장됨" (Saved to GitHub) toast appears and the post is committed to posts/<date>-<slug>.md in the chosen repository.
+4. A green "GitHub에 저장됨" (Saved to GitHub) toast appears and the post is committed to posts/<date>-<slug>.md.
 Optional: "과거 글 가져오기" (Import past posts) in the popup imports all posts of a velog username, or of the user's own Tistory blog.
 Tistory: sign in to tistory.com, open the blog's admin (https://<blog>.tistory.com/manage/newpost), publish a post (private is fine), then edit or delete it in the admin. Each action is committed to the repository as "[tistory] ...".
 
 Permissions:
 - storage: keeps the GitHub token, selected repository, settings and file paths locally.
+- offscreen: a hidden page converts Tistory post HTML to Markdown locally with the bundled turndown library.
 - Content scripts on velog.io: detect publish/edit/delete on velog. Only the post id is read; content is fetched again from velog's API.
 - github.com / api.github.com: GitHub sign-in (Device Flow) and committing files.
 - *.tistory.com: content scripts in the blog admin (/manage/*) detect publish/edit/delete (only the post number is read); the post is then read again from the admin's edit page with the user's own login.

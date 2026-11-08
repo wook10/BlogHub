@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BlogHub",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "velog·티스토리에 발행한 글을 GitHub 저장소에 자동으로 커밋합니다.",
   "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
   "action": {
@@ -15,7 +15,7 @@
     { "matches": ["https://*.tistory.com/manage/*"], "js": ["src/tistory-hook.js"], "world": "MAIN", "run_at": "document_start" },
     { "matches": ["https://*.tistory.com/manage/*"], "js": ["src/content.js"], "run_at": "document_start" }
   ],
-  "permissions": ["storage"],
+  "permissions": ["storage", "offscreen"],
   "host_permissions": [
     "https://github.com/*",
     "https://api.github.com/*",

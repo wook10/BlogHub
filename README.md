@@ -89,7 +89,7 @@ velog_url: https://velog.io/@아이디/useState-정리
 - **공개 저장소에 저장하면 누구나 글을 볼 수 있습니다.** 비공개 글까지 저장하려면 비공개 저장소를 쓰세요. 지운 글도 git 기록에는 남습니다.
 - **비공개 글**은 "비공개 글도 GitHub에 저장"을 켜고, 같은 브라우저에서 블로그에 로그인돼 있어야 저장됩니다.
 - velog와 티스토리 모두 공식 공개 API가 아니어서, 사이트가 바뀌면 동작하지 않을 수 있습니다. 실패하면 화면 알림과 팝업의 "최근 기록"에 이유가 나옵니다.
-- **티스토리 변환:** 제목, 굵게, 링크, 이미지, 목록, 인용, 코드 블록은 마크다운으로 바뀌고, 표는 HTML 그대로 남습니다(GitHub에서는 표로 보입니다).
+- **티스토리 변환:** 티스토리는 마크다운 모드로 써도 HTML만 저장하기 때문에 원본 마크다운은 남아 있지 않습니다. 그래서 티스토리 편집기와 같은 변환기([turndown](https://github.com/mixmark-io/turndown), 같은 설정)로 마크다운을 만듭니다. 티스토리 마크다운 모드에서 글을 다시 열었을 때와 거의 같은 모양이고, 머리줄 없는 표는 HTML 그대로 남습니다(GitHub에서는 표로 보입니다).
 - **티스토리 이미지:** 이미지 주소가 매달 바뀌어 그대로 두면 링크가 깨지므로, 이미지 백업을 꺼도 티스토리 이미지는 저장소에 저장합니다.
 - **티스토리에서 아직 안 되는 것:** 카테고리별 폴더, 글 관리 목록에서 여러 글을 한꺼번에 지우거나 공개 범위를 바꾸는 것, 개인 도메인 블로그.
 - GitHub 토큰은 이 브라우저의 확장 저장소에만 보관됩니다. 완전히 끊으려면 GitHub → Settings → Applications에서 BlogHub 권한을 지우세요.
@@ -103,6 +103,7 @@ velog_url: https://velog.io/@아이디/useState-정리
    - **Enable Device Flow**는 켜고, **Expire user access tokens**는 끕니다. (토큰 갱신에 비밀키가 필요해서)
 2. 받은 Client ID를 `src/config.js`의 `CLIENT_ID`에 넣고, 위 **직접 불러오기**로 불러옵니다.
 3. 테스트: `npm test` (Node 20 이상, 설치할 패키지 없음)
+4. 스토어용 패키지: 커밋한 뒤 `npm run zip` (커밋된 파일만 들어갑니다)
 
 ```
 manifest.json        확장 설정 (Manifest V3)
@@ -113,7 +114,9 @@ src/content.js       블로그 페이지의 소식을 백그라운드로 넘기�
 src/velog-hook.js    velog 페이지에서 출간·수정·삭제 요청을 가로챔
 src/velog.js         velog 글 읽기 (GraphQL)
 src/tistory-hook.js  티스토리 관리 화면에서 발행·수정·삭제 요청을 가로챔
-src/tistory.js       티스토리 글 읽기, HTML → 마크다운 변환
+src/tistory.js       티스토리 글 읽기, 이미지 자리표시자 처리
+offscreen/           화면 없는 페이지: 티스토리 HTML → 마크다운 변환 (서비스 워커에는 DOM이 없어서)
+offscreen/vendor/    turndown, turndown-plugin-gfm (MIT)
 src/config.js        OAuth Client ID
 popup/               확장 팝업 화면
 icons/               아이콘 (icon.svg가 원본, PNG는 npm run icons로 다시 만듦)

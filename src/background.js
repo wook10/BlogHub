@@ -10,11 +10,35 @@ const store = chrome.storage.local;
 // importId: 팝업의 "과거 글 가져오기" 칸에 미리 채울 아이디
 const velogSource = { name: 'velog', fetchPost, key: (id) => id, importId: (post) => post.username };
 
+// 티스토리 HTML → 마크다운. 서비스 워커에는 DOM이 없어서 화면 없는 페이지(offscreen)에서
+// 티스토리 편집기와 같은 turndown 설정으로 바꾼다.
+let creating = null; // 동시에 두 번 만들지 않게
+async function openOffscreen() {
+  const open = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+  if (open.length) return;
+  creating ??= chrome.offscreen
+    .createDocument({ url: 'offscreen/offscreen.html', reasons: ['DOM_PARSER'], justification: 'Convert blog post HTML to Markdown' })
+    .finally(() => (creating = null));
+  await creating;
+}
+
+async function htmlToMarkdown(html) {
+  const msg = { target: 'offscreen', type: 'html-to-markdown', html };
+  await openOffscreen();
+  const res = await chrome.runtime.sendMessage(msg).catch(async () => {
+    await openOffscreen(); // 그사이 페이지가 닫혔으면 다시 열고 한 번 더
+    return chrome.runtime.sendMessage(msg);
+  });
+  if (!res?.ok) throw new Error(`마크다운 변환 실패: ${res?.error ?? '응답 없음'}`);
+  return res.data;
+}
+
 function tistorySource(origin) {
   const host = new URL(origin).hostname;
   return {
     name: 'tistory',
-    fetchPost: (id) => tistory.fetchPost(origin, id),
+    fetchPost: (id) => tistory.fetchPost(origin, id, htmlToMarkdown),
+    exists: async (id) => !!(await tistory.fetchPost(origin, id)), // 지울 때 확인용: 본문 변환은 하지 않는다
     key: (id) => `tistory:${host}:${id}`,
     importId: () => host.split('.')[0],
   };
@@ -101,7 +125,7 @@ async function remove(id, token, source) {
   const oldPath = pathOf(key);
   if (!oldPath) return 'GitHub에 저장된 적 없는 글이라 지울 파일이 없어요.';
   // 가짜 삭제 요청으로 백업이 지워지지 않게, 블로그에서 정말 없어졌는지 확인한다
-  if (await source.fetchPost(id)) throw new Error(`${source.name}에 아직 있는 글이라 지우지 않았어요.`);
+  if (await (source.exists ?? source.fetchPost)(id)) throw new Error(`${source.name}에 아직 있는 글이라 지우지 않았어요.`);
   await deletePost(token, repo, oldPath, `[${source.name}] 삭제: ${oldPath.split('/').pop()}`);
   await remember({ [key]: null });
   return 'GitHub에서도 지웠어요.';
@@ -157,6 +181,7 @@ async function importAll(blog, username, token) {
   const { source, items, load } = await postList(blog, username, (n) => status(`글 목록 불러오는 중 (${n}개)`));
   let saved = 0;
   let broken = 0;
+  let lastError = '';
   for (let start = 0; start < items.length; start += IMPORT_CHUNK) {
     const files = {};
     const deleteDirs = [];
@@ -166,8 +191,9 @@ async function importAll(blog, username, token) {
       let post;
       try {
         post = await load(item);
-      } catch {
-        broken++; // 정보가 빠진 글 하나 때문에 전체를 멈추지 않는다
+      } catch (e) {
+        broken++; // 글 하나 때문에 전체를 멈추지 않는다. 이유는 마지막에 보여 준다.
+        lastError = e.message;
         continue;
       }
       if (!post || post.is_temp || (post.is_private && !savePrivate)) continue;
@@ -189,8 +215,9 @@ async function importAll(blog, username, token) {
     await remember(paths); // 나눠 커밋하므로 중간에 멈춰도 여기까지는 저장된다
     saved += count;
   }
-  if (!saved) return '가져올 글이 없어요.';
-  return `과거 글 ${saved}개를 GitHub에 저장했어요.${broken ? ` (정보가 빠진 글 ${broken}개는 건너뜀)` : ''}`;
+  const skipped = broken ? ` (못 읽은 글 ${broken}개는 건너뜀: ${lastError})` : '';
+  if (!saved) return `가져올 글이 없어요.${skipped}`;
+  return `과거 글 ${saved}개를 GitHub에 저장했어요.${skipped}`;
 }
 
 async function waitForLogin({ device_code, user_code, interval }) {

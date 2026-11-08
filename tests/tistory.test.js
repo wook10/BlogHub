@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { htmlToMarkdown, parsePostPage, normalize, fetchPost, blogOrigin, listPostIds, originOf } from '../src/tistory.js';
+import { imagesToHtml, unescapeImgSrc, parsePostPage, normalize, fetchPost, blogOrigin, listPostIds, originOf } from '../src/tistory.js';
 
 const origin = 'https://me.tistory.com';
 const raw = {
@@ -13,77 +13,24 @@ const raw = {
   tags: ['a'],
 };
 
-test('htmlToMarkdown: 티스토리 편집기가 만드는 흔한 태그', () => {
-  const html = [
-    '<h2>제목</h2>',
-    '<p data-ke-size="size16"><b>굵게</b> <i>기울임</i> <a href="https://x.com?a=1&amp;b=2">링크</a> <code>a&lt;b</code></p>',
-    '<p data-ke-size="size16">&nbsp;</p>',
-    '<ul><li>하나</li><li>둘<ol><li>안쪽</li></ol></li></ul>',
-    '<blockquote data-ke-style="style1">인용<br>둘째 줄</blockquote>',
-    '<pre class="javascript" data-ke-language="javascript"><code>if (a &lt; b) {\n\n\n  go();\n}</code></pre>',
-    '<hr><table><tbody><tr><td>칸</td></tr></tbody></table>',
-  ].join('');
-  assert.equal(
-    htmlToMarkdown(html),
-    [
-      '## 제목',
-      '',
-      '**굵게** *기울임* [링크](https://x.com?a=1&b=2) `a<b`',
-      '',
-      '- 하나',
-      '- 둘',
-      '  1. 안쪽',
-      '',
-      '> 인용',
-      '> 둘째 줄',
-      '',
-      '```javascript',
-      'if (a < b) {\n\n\n  go();\n}',
-      '```',
-      '',
-      '---',
-      '',
-      '<table><tbody><tr><td>칸</td></tr></tbody></table>',
-    ].join('\n'),
-  );
-});
-
-test('htmlToMarkdown: 잘못된 문자 번호와 글자로 쓴 태그', () => {
-  assert.equal(htmlToMarkdown('<p>&#99999999; &lt;div&gt; 태그</p>'), '&amp;#99999999; &lt;div> 태그');
-  // 글자 그대로 쓴 &lt; 는 GitHub에서도 &lt; 로 보여야 한다
-  assert.equal(htmlToMarkdown('<p>&amp;lt; 와 A&amp;B</p>'), '&amp;lt; 와 A&B');
-});
-
-test('htmlToMarkdown: 서명이 붙은 새 이미지는 /dna/ 주소로 (2026-11-08 실제 글 모양)', () => {
-  const html = '<p>[##_Image|kage@ab/cd/img.png?credential=x&expires=1&signature=y%3D|CDM|1.3|{"filename":"a.png"}_##]</p>';
-  const url = '![](https://blog.kakaocdn.net/dna/ab/cd/img.png?credential=x&expires=1&signature=y%3D)';
-  assert.equal(htmlToMarkdown(html), url);
-  assert.equal(htmlToMarkdown(html.replace(/&/g, '&amp;')), url); // &amp;로 적혀 와도 같은 주소
-  // 표는 HTML 그대로 남는데, 그 안의 이미지 주소도 &amp;로 바뀌지 않아야 백업할 때 받아진다
-  const table = `<table><tbody><tr><td>${html}</td></tr></tbody></table>`;
-  assert.match(htmlToMarkdown(table), /src="https:\/\/blog\.kakaocdn\.net\/dna\/ab\/cd\/img\.png\?credential=x&expires=1&signature=y%3D"/);
-  // 표 안에 직접 들어간 <img>의 &amp; &#38; 도 풀린다 (작은따옴표도)
-  const raw = `<table><tr><td><img src="https://blog.kakaocdn.net/dna/x.png?credential=a&amp;expires=1"><img src='https://blog.kakaocdn.net/dna/y.png?credential=b&#38;expires=2'></td></tr></table>`;
-  assert.match(htmlToMarkdown(raw), /src="https:\/\/blog\.kakaocdn\.net\/dna\/x\.png\?credential=a&expires=1"/);
-  assert.match(htmlToMarkdown(raw), /src='https:\/\/blog\.kakaocdn\.net\/dna\/y\.png\?credential=b&expires=2'/);
-  // 키 속 표기는 한 번만 풀린다 (&amp;lt; → &lt;, 두 번 풀려 < 가 되지 않게)
-  assert.equal(htmlToMarkdown('<p>[##_Image|kage@ab/a&amp;lt;b.png|CDM|1.3|{}_##]</p>'), '![](https://blog.kakaocdn.net/dn/ab/a&lt;b.png)');
-  // 주소 속 " 는 태그를 깨지 않게 %22로
-  assert.equal(htmlToMarkdown('<p>[##_Image|kage@ab/a&quot;b.png|CDM|1.3|{}_##]</p>'), '![](https://blog.kakaocdn.net/dn/ab/a%22b.png)');
+test('imagesToHtml: 이미지 자리표시자를 카카오 CDN <img>로', () => {
+  const img = (url) => `<img src="${url}">`;
+  // 서명이 붙은 새 이미지는 /dna/ (2026-11-08 실제 글 모양), 본문에 적힌 & 표기는 그대로 둔다 (HTML을 읽을 때 풀린다)
+  const signed = 'kage@ab/cd/img.png?credential=x&expires=1&signature=y%3D';
+  assert.equal(imagesToHtml(`<p>[##_Image|${signed}|CDM|1.3|{"filename":"a.png"}_##]</p>`),
+    `<p>${img('https://blog.kakaocdn.net/dna/ab/cd/img.png?credential=x&expires=1&signature=y%3D')}</p>`);
   // 서명 없는 예전 이미지는 /dn/
-  assert.equal(htmlToMarkdown('<p>[##_Image|kage@ab/img.png?original|CDM|1.3|{}_##]</p>'), '![](https://blog.kakaocdn.net/dn/ab/img.png?original)');
-});
-
-test('htmlToMarkdown: 이미지 자리표시자는 카카오 CDN 이미지로', () => {
-  const html =
-    '<p>[##_Image|kage@abc/img.png|CDM|1.3|{"originWidth":10,"caption":"a|b"}_##]</p>' +
-    '<p>[##_ImageGrid|kage@k1/1.jpg,kage@k2/2.jpg|data-origin-width="1"|_##]</p>' +
-    '<p>[##_Gallery|kage@g1/a.jpg|cap|kage@g2/b.jpg|cap|_##]</p>';
+  assert.equal(imagesToHtml('[##_Image|kage@ab/img.png?original|CDM|1.3|{}_##]'), img('https://blog.kakaocdn.net/dn/ab/img.png?original'));
+  // " < > 는 태그가 깨지지 않게 주소 표기로
+  assert.equal(imagesToHtml('[##_Image|kage@ab/a<b>.png|CDM|1.3|{}_##]'), img('https://blog.kakaocdn.net/dn/ab/a%3Cb%3E.png'));
+  // 캡션 속 | 에 흔들리지 않고, 그리드(쉼표)와 갤러리(칸마다)의 이미지를 모두 찾는다
   assert.equal(
-    htmlToMarkdown(html),
-    '![](https://blog.kakaocdn.net/dn/abc/img.png)\n\n' +
-      '![](https://blog.kakaocdn.net/dn/k1/1.jpg)![](https://blog.kakaocdn.net/dn/k2/2.jpg)\n\n' +
-      '![](https://blog.kakaocdn.net/dn/g1/a.jpg)![](https://blog.kakaocdn.net/dn/g2/b.jpg)',
+    imagesToHtml(
+      '[##_Image|kage@abc/img.png|CDM|1.3|{"caption":"a|b"}_##]' +
+        '[##_ImageGrid|kage@k1/1.jpg,kage@k2/2.jpg|data-origin-width="1"|_##]' +
+        '[##_Gallery|kage@g1/a.jpg|cap|kage@g2/b.jpg|cap|_##]',
+    ),
+    ['abc/img.png', 'k1/1.jpg', 'k2/2.jpg', 'g1/a.jpg', 'g2/b.jpg'].map((k) => img(`https://blog.kakaocdn.net/dn/${k}`)).join(''),
   );
 });
 
@@ -105,7 +52,6 @@ test('parsePostPage: 수정 화면은 post, 삭제 안내는 null, 알 수 없�
 
 test('normalize: 공개 범위, 날짜, 파일 이름, 꼭 필요한 값', () => {
   const post = normalize(raw, origin);
-  assert.equal(post.body, '본문 & 내용');
   assert.equal(post.is_private, true);
   assert.equal(normalize({ ...raw, visibility: 20 }, origin).is_private, false);
   assert.equal(normalize({ ...raw, visibility: 15 }, origin).is_private, true); // 보호글
@@ -124,7 +70,16 @@ test('blogOrigin: 티스토리 블로그 주소만', () => {
   assert.throws(() => blogOrigin('http://me.tistory.com/manage/'));
 });
 
-test('fetchPost: 지워진 글은 null, 로그인 화면으로 넘어가면 오류', async () => {
+test('fetchPost: 본문은 이미지를 바꾼 뒤 변환기로, 지워진 글은 null, 로그인 화면이면 오류', async () => {
+  const page = `  window.Config = {
+    post: ${JSON.stringify({ ...raw, content: '<p>[##_Image|kage@a/b.png|CDM|1.3|{}_##]</p>' })},
+  }`;
+  globalThis.fetch = async (url) => ({ ok: true, url, text: async () => page });
+  const seen = [];
+  const post = await fetchPost(origin, '1', async (html) => (seen.push(html), ' 변환됨 \n'));
+  assert.deepEqual(seen, ['<p><img src="https://blog.kakaocdn.net/dn/a/b.png"></p>']);
+  assert.equal(post.body, '변환됨');
+
   globalThis.fetch = async (url) => ({ ok: true, url, text: async () => DELETED });
   assert.equal(await fetchPost(origin, '1'), null);
 
@@ -134,8 +89,7 @@ test('fetchPost: 지워진 글은 null, 로그인 화면으로 넘어가면 오�
   await assert.rejects(fetchPost(origin, '1/../2'), /글 번호/);
 });
 
-test('htmlToMarkdown: 백틱이 든 인라인 코드, 쉼표로 온 태그', () => {
-  assert.equal(htmlToMarkdown('<p><code>a`b</code></p>'), '`` a`b ``');
+test('normalize: 쉼표로 온 태그', () => {
   assert.deepEqual(normalize({ ...raw, tags: 'react, hooks' }, origin).tags, ['react', 'hooks']);
 });
 
@@ -155,4 +109,18 @@ test('originOf: 블로그 아이디로 주소, 이상한 아이디는 오류', (
   assert.equal(originOf(' Me '), origin);
   assert.throws(() => originOf('me.evil.com/x'));
   assert.throws(() => originOf('www'));
+});
+
+test('unescapeImgSrc: HTML로 남은 표 속 이미지 주소의 & 표기만 푼다', () => {
+  const md = '| 글 &amp; 표 |\n<table><tr><td><img src="https://blog.kakaocdn.net/dna/x.png?credential=a&amp;expires=1"></td></tr></table>';
+  assert.equal(
+    unescapeImgSrc(md),
+    '| 글 &amp; 표 |\n<table><tr><td><img src="https://blog.kakaocdn.net/dna/x.png?credential=a&expires=1"></td></tr></table>',
+  );
+});
+
+test('unescapeImgSrc: 코드 블록 속 예제는 그대로, 괄호 든 이미지 이름은 주소 표기로', () => {
+  const code = '```html\n<img src="a.png?x=1&amp;y=2">\n```';
+  assert.equal(unescapeImgSrc(code), code);
+  assert.equal(imagesToHtml('[##_Image|kage@ab/a(1).png|CDM|1.3|{}_##]'), '<img src="https://blog.kakaocdn.net/dn/ab/a%281%29.png">');
 });

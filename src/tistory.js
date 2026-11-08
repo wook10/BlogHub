@@ -49,7 +49,9 @@ export function parsePostPage(html) {
 }
 
 // 글 하나. 지워졌으면 null. 로그인이 풀렸으면 오류 (지워진 것으로 착각해 GitHub에서 지우지 않게).
-export async function fetchPost(origin, id) {
+// toMarkdown: HTML을 마크다운으로 바꾸는 함수 (서비스 워커에는 DOM이 없어서 화면 없는 페이지에 맡긴다).
+// 없으면 본문은 바꾸지 않는다 (글이 있는지만 볼 때).
+export async function fetchPost(origin, id, toMarkdown) {
   if (!/^\d+$/.test(id)) throw new Error('티스토리 글 번호가 이상해요');
   const res = await fetch(`${origin}/manage/newpost/${id}?type=post`, { credentials: 'include' });
   if (!res.ok) throw new Error(`티스토리 서버 오류 (${res.status})`);
@@ -57,10 +59,24 @@ export async function fetchPost(origin, id) {
     throw new Error('티스토리에 로그인돼 있는지 확인해 주세요.');
   }
   const raw = parsePostPage(await res.text());
-  return raw ? normalize(raw, origin) : null;
+  if (!raw) return null;
+  const post = normalize(raw, origin); // 정보가 이상하면 변환 전에 멈춘다
+  if (!toMarkdown) return post;
+  return { ...post, body: unescapeImgSrc(await toMarkdown(imagesToHtml(raw.content ?? ''))).trim() };
 }
 
-// 저장에 쓰는 모양 (velog.js의 normalize와 같은 모양)
+// 머리줄 없는 표처럼 마크다운으로 못 바꾼 부분은 HTML 그대로 남는데, 그 속 이미지 주소의 &는 &amp;로 적힌다.
+// 그대로면 백업할 때 주소가 틀어지므로 <img src="..."> 안의 & 표기만 푼다. 코드 블록(```) 속 예제는 건드리지 않는다.
+const AMP = /&(?:amp|#38|#x26);/gi;
+const IMG_SRC = /(<img\b[^>]*?\ssrc=)(["'])(.*?)\2/gi;
+const CODE_BLOCK = /(^`{3,}[^\n]*\n[\s\S]*?^`{3,}[ \t]*$)/m;
+export const unescapeImgSrc = (md) =>
+  md
+    .split(CODE_BLOCK)
+    .map((part, i) => (i % 2 ? part : part.replace(IMG_SRC, (_, before, q, url) => before + q + url.replace(AMP, '&') + q)))
+    .join('');
+
+// 저장에 쓰는 모양 (velog.js의 normalize와 같은 모양). 본문은 fetchPost가 마크다운으로 바꿔 채운다.
 export function normalize(p, origin) {
   const seconds = Number(p?.orgPublished);
   const id = String(p?.id ?? '');
@@ -70,7 +86,7 @@ export function normalize(p, origin) {
   return {
     id,
     title: p.title,
-    body: htmlToMarkdown(p.content ?? ''),
+    body: '',
     tags: Array.isArray(p.tags) ? p.tags : String(p.tags ?? '').split(',').map((t) => t.trim()).filter(Boolean),
     is_private: Math.abs(Number(p.visibility)) !== PUBLIC,
     is_temp: false, // 임시저장은 다른 주소(/manage/drafts)라 여기로 오지 않는다
@@ -83,30 +99,9 @@ export function normalize(p, origin) {
   };
 }
 
-// ---- HTML → 마크다운 ----
-// 서비스 워커에는 DOMParser가 없어서 태그를 직접 읽는다.
-// shortcut: 티스토리 편집기가 만드는 흔한 태그만 바꾸고, 표는 HTML 그대로 둔다(GitHub에서 표로 보인다).
-// 본문 글자 속 *, _ 같은 마크다운 기호는 이스케이프하지 않는다. 깨지는 글이 나오면 그때 추가하자.
-
-const VOID = new Set(['br', 'img', 'hr', 'input', 'meta', 'col', 'wbr', 'source']);
-const BLOCK = new Set(['p', 'div', 'section', 'figure', 'figcaption', 'article', 'header', 'footer']);
-
-const decode = (s) =>
-  s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (whole, e) => {
-    if (e[0] !== '#') return { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' }[e.toLowerCase()];
-    try {
-      return String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : +e.slice(1));
-    } catch {
-      return whole; // 잘못된 번호 하나 때문에 글 전체를 버리지 않는다
-    }
-  });
-
-const attr = (attrs, name) => {
-  const m = attrs.match(new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'));
-  return m ? decode(m[1] ?? m[2] ?? m[3]) : '';
-};
-
-// 이미지 자리표시자 [##_Image|kage@키/파일|...|_##]를 실제 이미지 주소로 바꾼다
+// ---- 이미지 자리표시자 ----
+// 티스토리 본문의 이미지는 [##_Image|kage@키/파일|...|_##] 같은 자리표시자로 들어 있다.
+// 마크다운으로 바꾸기 전에 <img>로 바꿔 두면 변환기가 ![](주소)로 만들어 준다.
 const KAGE = /kage@([^|,\s"]+)/g;
 // 자리표시자 전체에서 이미지를 찾는다 (갤러리는 이미지마다 칸이 따로 있다)
 const PLACEHOLDER = /\[##_(?:Image|ImageGrid|Gallery)\|[\s\S]*?_##\]/g;
@@ -114,131 +109,11 @@ const PLACEHOLDER = /\[##_(?:Image|ImageGrid|Gallery)\|[\s\S]*?_##\]/g;
 // 서명은 그달 말까지 유효하고 글을 읽을 때마다 새로 붙는다(2026-11 확인).
 export const SIGNED_IMAGE = /[?&]credential=/;
 const imageUrl = (key) => `https://blog.kakaocdn.net/${SIGNED_IMAGE.test(key) ? 'dna' : 'dn'}/${key}`;
-// 키는 본문에 적힌 그대로 <img src>에 넣는다. &amp; 같은 표기는 태그를 읽을 때(attr) 한 번만 풀린다.
-const placeholders = (html) =>
+// 키는 본문에 적힌 그대로 넣는다 (&amp; 같은 표기는 HTML을 읽을 때 한 번 풀린다).
+// 태그나 마크다운 링크 ![](주소)를 깨는 글자(따옴표, 괄호, < >)는 주소 표기(%22 등)로 바꾼다.
+// (encodeURIComponent는 괄호를 바꾸지 않아 직접 바꾼다)
+const percent = (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`;
+export const imagesToHtml = (html) =>
   html.replace(PLACEHOLDER, (whole) =>
-    [...whole.matchAll(KAGE)].map(([, key]) => `<img src="${imageUrl(key).replace(/[<>]/g, encodeURIComponent)}">`).join(''),
+    [...whole.matchAll(KAGE)].map(([, key]) => `<img src="${imageUrl(key).replace(/["()<>]/g, percent)}">`).join(''),
   );
-
-// 표는 HTML 그대로 남기므로, 그 안의 이미지 주소만 & 표기(&amp; &#38; &#x26;)를 풀어 백업할 때 제 주소로 받아지게 한다
-const AMP = /&(?:amp|#38|#x26);/gi;
-const unescapeSrc = (tableHtml) =>
-  tableHtml.replace(/(<img\b[^>]*?\ssrc=)(["'])(.*?)\2/gi, (_, before, q, url) => before + q + url.replace(AMP, '&') + q);
-
-// 태그를 나무 모양으로 묶는다. 닫는 태그가 어긋나면 맞는 것까지 닫고, 없는 태그는 무시한다.
-function parse(html) {
-  const root = { tag: '', children: [] };
-  const stack = [root];
-  const re = /<!--[\s\S]*?-->|<(\/?)([a-zA-Z][a-zA-Z0-9]*)([^>]*)>|([^<]+|<)/g;
-  for (let m; (m = re.exec(html)); ) {
-    const [whole, closing, rawTag, attrs = '', text] = m;
-    const top = stack.at(-1);
-    if (text !== undefined) top.children.push(decode(text));
-    else if (!rawTag) continue; // 주석
-    else if (closing) {
-      const i = stack.findLastIndex((n) => n.tag === rawTag.toLowerCase());
-      if (i > 0) {
-        stack[i].end = m.index + whole.length;
-        stack.length = i;
-      }
-    } else {
-      const node = { tag: rawTag.toLowerCase(), attrs, children: [], start: m.index };
-      top.children.push(node);
-      if (!VOID.has(node.tag) && !attrs.trim().endsWith('/')) stack.push(node);
-    }
-  }
-  return root;
-}
-
-const textOf = (node) =>
-  typeof node === 'string' ? node : node.tag === 'br' ? '\n' : node.children.map(textOf).join('');
-
-function render(node, html) {
-  // 글자로 쓴 <div>, &lt; 같은 것이 마크다운에서 태그나 문자로 바뀌지 않게 다시 감싼다
-  if (typeof node === 'string') {
-    return node.replace(/\s+/g, ' ').replace(/&(?=#?\w+;)/g, '&amp;').replace(/</g, '&lt;');
-  }
-  const inner = () => node.children.map((c) => render(c, html)).join('');
-  const block = (s) => (s.trim() ? `\n\n${s.trim()}\n\n` : '\n\n');
-  const wrap = (mark) => {
-    const s = inner();
-    return s.trim() ? `${mark}${s.trim()}${mark}` : s;
-  };
-  const { tag, attrs } = node;
-  if (/^h[1-6]$/.test(tag)) return block(`${'#'.repeat(+tag[1])} ${inner().trim()}`);
-  if (BLOCK.has(tag)) return block(inner());
-  switch (tag) {
-    case 'br':
-      return '  \n';
-    case 'hr':
-      return '\n\n---\n\n';
-    case 'strong':
-    case 'b':
-      return wrap('**');
-    case 'em':
-    case 'i':
-      return wrap('*');
-    case 's':
-    case 'strike':
-    case 'del':
-      return wrap('~~');
-    case 'code': {
-      // 코드 속 ` 보다 긴 ` 묶음으로 감싼다 (a`b → ``a`b``)
-      const code = textOf(node);
-      const ticks = '`'.repeat(Math.max(0, ...(code.match(/`+/g) ?? []).map((t) => t.length)) + 1);
-      return ticks.length > 1 ? `${ticks} ${code} ${ticks}` : `\`${code}\``;
-    }
-    case 'a': {
-      const href = attr(attrs, 'href');
-      return href ? `[${inner().trim()}](${href})` : inner();
-    }
-    case 'img': {
-      // 마크다운 링크를 깨는 글자(공백, 따옴표, 괄호)는 주소 표기(%20 등)로
-      const src = attr(attrs, 'src').replace(/[\s"()<>]/g, encodeURIComponent);
-      return src ? `![${attr(attrs, 'alt')}](${src})` : '';
-    }
-    case 'pre': {
-      const lang = attr(attrs, 'data-ke-language') || attr(attrs, 'class').split(/\s+/)[0];
-      return `\n\n\`\`\`${lang}\n${textOf(node).replace(/\n$/, '')}\n\`\`\`\n\n`;
-    }
-    case 'blockquote':
-      return block(inner().trim().split('\n').map((l) => `> ${l}`.trimEnd()).join('\n'));
-    case 'ul':
-    case 'ol': {
-      let n = 0;
-      const items = node.children
-        .filter((c) => typeof c !== 'string')
-        .map((li) => {
-          const marker = tag === 'ol' ? `${++n}.` : '-';
-          const text = render({ ...li, tag: li.tag === 'li' ? 'span' : li.tag }, html).trim().replace(/\n{2,}/g, '\n');
-          return `${marker} ${text.replace(/\n/g, `\n${' '.repeat(marker.length + 1)}`)}`;
-        });
-      return `\n\n${items.join('\n')}\n\n`;
-    }
-    case 'table':
-      return node.end ? block(unescapeSrc(html.slice(node.start, node.end))) : inner();
-    case 'script':
-    case 'style':
-      return '';
-    default:
-      return inner();
-  }
-}
-
-export function htmlToMarkdown(content) {
-  const html = placeholders(content);
-  // 빈 줄 정리는 코드 블록 바깥에서만 한다 (코드 속 빈 줄은 그대로)
-  return render(parse(html), html)
-    .split(/(```[^\n]*\n[\s\S]*?\n```)/)
-    .map((part, i) =>
-      i % 2
-        ? part
-        : part
-            .split('\n')
-            .map((l) => (l.trim() ? l : ''))
-            .join('\n')
-            .replace(/\n{3,}/g, '\n\n'),
-    )
-    .join('')
-    .trim();
-}

@@ -5,6 +5,6 @@
   "scripts": {
     "test": "node --test",
     "icons": "node scripts/icons.mjs",
-    "zip": "git archive --format=zip -o bloghub.zip HEAD manifest.json src popup icons"
+    "zip": "git archive --format=zip -o bloghub.zip HEAD manifest.json src popup offscreen icons"
   }
 }
