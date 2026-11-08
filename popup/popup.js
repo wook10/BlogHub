@@ -14,11 +14,18 @@ async function send(msg) {
 let reposLoaded = false;
 
 async function render() {
-  const { token, user, repo, pending, authError, lastSync, savePrivate = false, backupImages = true, velogUser, importStatus } =
-    await store.get();
+  const {
+    token, user, repo, pending, authError, lastSync, savePrivate = false, backupImages = true, importStatus,
+    importBlog = 'velog', velogUser, importUser = velogUser, // velogUser: 1.0.0이 저장한 값
+  } = await store.get();
   $('save-private').checked = savePrivate;
   $('backup-images').checked = backupImages;
-  if (velogUser && !$('velog-user').value) $('velog-user').value = velogUser;
+  // 마지막으로 글을 저장한 블로그와 아이디를 미리 채운다 (직접 고친 값은 그대로 둔다)
+  if (importUser && !$('import-user').value) {
+    $('import-blog').value = importBlog;
+    $('import-user').value = importUser;
+    showPlaceholder();
+  }
   $('import-btn').disabled = !!importStatus;
   $('import-status').textContent = importStatus ?? '비공개 글은 "비공개 글도 저장"을 켜야 가져와요.';
   if (lastSync) {
@@ -76,7 +83,14 @@ $('create-form').onsubmit = async (e) => {
 
 $('save-private').onchange = (e) => store.set({ savePrivate: e.target.checked });
 $('backup-images').onchange = (e) => store.set({ backupImages: e.target.checked });
-$('import-btn').onclick = () => send({ type: 'import', username: $('velog-user').value }).catch(() => {});
+$('import-btn').onclick = () =>
+  send({ type: 'import', blog: $('import-blog').value, username: $('import-user').value }).catch(() => {});
+
+// 고른 블로그에 맞게 어떤 아이디를 넣는지 보여 준다
+function showPlaceholder() {
+  $('import-user').placeholder = $('import-blog').value === 'tistory' ? '아이디.tistory.com의 아이디' : 'velog.io/@아이디';
+}
+$('import-blog').onchange = showPlaceholder;
 
 $('logout-btn').onclick = () => {
   reposLoaded = false;

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { htmlToMarkdown, parsePostPage, normalize, fetchPost, blogOrigin } from '../src/tistory.js';
+import { htmlToMarkdown, parsePostPage, normalize, fetchPost, blogOrigin, listPostIds, originOf } from '../src/tistory.js';
 
 const origin = 'https://me.tistory.com';
 const raw = {
@@ -117,4 +117,22 @@ test('fetchPost: 지워진 글은 null, 로그인 화면으로 넘어가면 오�
 test('htmlToMarkdown: 백틱이 든 인라인 코드, 쉼표로 온 태그', () => {
   assert.equal(htmlToMarkdown('<p><code>a`b</code></p>'), '`` a`b ``');
   assert.deepEqual(normalize({ ...raw, tags: 'react, hooks' }, origin).tags, ['react', 'hooks']);
+});
+
+test('listPostIds: 여러 쪽의 글 번호를 모으고, 로그인 화면이면 오류', async () => {
+  const pages = { 1: [{ id: 3 }, { id: 2 }], 2: [{ id: 1 }] };
+  globalThis.fetch = async (url) => ({
+    ok: true,
+    json: async () => ({ totalCount: 3, items: pages[new URL(url).searchParams.get('page')] ?? [] }),
+  });
+  assert.deepEqual(await listPostIds(origin), ['3', '2', '1']);
+
+  globalThis.fetch = async () => ({ ok: true, json: async () => { throw new SyntaxError('<html>'); } });
+  await assert.rejects(listPostIds(origin), /로그인/);
+});
+
+test('originOf: 블로그 아이디로 주소, 이상한 아이디는 오류', () => {
+  assert.equal(originOf(' Me '), origin);
+  assert.throws(() => originOf('me.evil.com/x'));
+  assert.throws(() => originOf('www'));
 });

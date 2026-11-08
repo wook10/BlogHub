@@ -40,11 +40,11 @@ BlogHub는 velog나 티스토리에 글을 발행하는 순간, 그 글을 내 G
 
 ■ 주요 기능
 - 발행 즉시 커밋: velog의 "출간하기", 티스토리의 발행을 누르면 바로 GitHub에 저장됩니다. 임시저장은 커밋하지 않습니다.
-- 원본 마크다운 그대로: 직접 쓴 마크다운에 제목, 날짜, 태그, 시리즈, 글 주소를 붙여 저장합니다.
+- 마크다운으로 저장: velog는 직접 쓴 마크다운 그대로, 티스토리는 HTML을 마크다운으로 바꿔 제목, 날짜, 태그, 글 주소와 함께 저장합니다.
 - 수정·삭제 반영: 글을 고치면 같은 파일을 업데이트하고, 블로그에서 지우면 저장소에서도 지웁니다.
 - 이미지 백업: 글에 들어간 블로그 이미지를 저장소에 함께 저장하고 링크를 저장소 경로로 바꿉니다.
-- 시리즈별 폴더: 시리즈에 속한 글은 posts/시리즈명/ 폴더에 정리됩니다.
-- 과거 글 가져오기: 지금까지 쓴 글을 한 번에 저장소로 가져옵니다.
+- 시리즈별 폴더 (velog): 시리즈에 속한 글은 posts/시리즈명/ 폴더에 정리됩니다.
+- 과거 글 가져오기: velog 아이디나 내 티스토리 블로그 아이디를 넣으면 지금까지 쓴 글을 한 번에 저장소로 가져옵니다.
 - 비공개 글 선택: 비공개 글은 기본으로 저장하지 않고, 설정에서 켤 수 있습니다.
 
 ■ 사용 방법
@@ -90,7 +90,7 @@ How to test:
 2. In the popup, create a new repository (e.g. "my-velog") or pick an existing one.
 3. Sign in to velog.io (any GitHub/Google account works), write a post and press "출간하기" (Publish).
 4. A green "GitHub에 저장됨" (Saved to GitHub) toast appears and the post is committed to posts/<date>-<slug>.md in the chosen repository.
-Optional: "과거 글 가져오기" (Import past posts) in the popup imports all existing posts of a velog username.
+Optional: "과거 글 가져오기" (Import past posts) in the popup imports all posts of a velog username, or of the user's own Tistory blog.
 Tistory: sign in to tistory.com, open the blog's admin (https://<blog>.tistory.com/manage/newpost), publish a post (private is fine), then edit or delete it in the admin. Each action is committed to the repository as "[tistory] ...".
 
 Permissions:

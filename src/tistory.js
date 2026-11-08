@@ -12,6 +12,28 @@ export function blogOrigin(url) {
   return origin;
 }
 
+// 블로그 아이디(아이디.tistory.com의 아이디)로 블로그 주소
+export const originOf = (id) => blogOrigin(`https://${String(id).trim().toLowerCase()}.tistory.com/`);
+
+// 과거 글 가져오기: 글 관리 목록(/manage/posts.json)에서 글 번호를 모두 모은다.
+// 관리 화면이라 블로그 주인으로 로그인돼 있어야 한다. 비공개 글도 들어 있다.
+export async function listPostIds(origin, onPage) {
+  const ids = new Set();
+  for (let page = 1; page <= 1000; page++) {
+    const query = `category=-3&page=${page}&searchKeyword=&searchType=title&visibility=all`; // 관리 화면이 쓰는 값 그대로
+    const res = await fetch(`${origin}/manage/posts.json?${query}`, { credentials: 'include' });
+    if (!res.ok) throw new Error(`티스토리 서버 오류 (${res.status})`);
+    const data = await res.json().catch(() => null); // 로그인 화면(HTML)으로 넘어가면 JSON이 아니다
+    if (!Array.isArray(data?.items)) {
+      throw new Error('티스토리 글 목록을 읽지 못했어요. 내 블로그 아이디인지, 티스토리에 로그인돼 있는지 확인해 주세요.');
+    }
+    for (const item of data.items) if (/^\d+$/.test(String(item.id))) ids.add(String(item.id));
+    await onPage?.(ids.size);
+    if (!data.items.length || ids.size >= data.totalCount) break;
+  }
+  return [...ids];
+}
+
 // 수정 화면 HTML에서 post: {...} 한 줄을 꺼낸다.
 // 지워진 글은 티스토리가 "삭제된 글입니다" 알림만 있는 짧은 페이지를 준다 → null.
 // 그 밖에 알아볼 수 없는 화면은 오류: 지워진 것으로 착각해 GitHub 백업을 지우지 않게.
