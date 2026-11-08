@@ -12,14 +12,14 @@ function toast(text, ok) {
 }
 
 window.addEventListener('message', async (e) => {
-  // 같은 창에서 온 VelogHub 메시지만 받는다 (광고 iframe 등은 제외). 내용 확인은 백그라운드가 한다.
-  if (e.source !== window || e.data?.source !== 'veloghub') return;
+  // 같은 창에서 온 BlogHub 메시지만 받는다 (광고 iframe 등은 제외). 내용 확인은 백그라운드가 한다.
+  if (e.source !== window || e.data?.source !== 'bloghub') return;
   const { op, id, error } = e.data;
   if (op !== 'publish' && op !== 'remove') return;
   try {
     const res = await chrome.runtime.sendMessage({ type: op, id, error });
     toast(res.ok ? res.data : `GitHub ${op === 'remove' ? '삭제' : '저장'} 실패: ${res.error}`, res.ok);
   } catch {
-    toast('VelogHub가 업데이트됐어요. 페이지를 새로고침해 주세요.', false);
+    toast('BlogHub가 업데이트됐어요. 페이지를 새로고침해 주세요.', false);
   }
 });

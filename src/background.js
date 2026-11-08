@@ -1,8 +1,22 @@
 import { requestDeviceCode, pollToken, getUser, listRepos, createRepo, commitFiles } from './github.js';
 import { toMarkdown, filePath, findImages, replaceImages, imageDir, imageName, relativeLink } from './markdown.js';
 import { fetchPost, fetchAllPosts, normalize } from './velog.js';
+import * as tistory from './tistory.js';
 
 const store = chrome.storage.local;
+
+// 메시지를 보낸 페이지로 어느 블로그인지 정한다.
+// key: 저장소에 저장한 파일을 기억하는 이름 (티스토리 글 번호는 블로그마다 1부터라 블로그 주소를 붙인다)
+function sourceOf(url) {
+  if (url?.startsWith('https://velog.io/')) return { name: 'velog', fetchPost, key: (id) => id };
+  const origin = url && new URL(url).pathname.startsWith('/manage/') ? tistory.blogOrigin(url) : null;
+  if (!origin) throw new Error('velog나 티스토리 관리 화면에서 온 요청이 아니에요');
+  return {
+    name: 'tistory',
+    fetchPost: (id) => tistory.fetchPost(origin, id),
+    key: (id) => `tistory:${new URL(origin).hostname}:${id}`,
+  };
+}
 
 // 서비스 워커가 새로 떴다면 전에 하던 가져오기는 이미 멈춘 것이라 표시를 지운다
 store.remove('importStatus');
@@ -22,7 +36,7 @@ async function target(token) {
   const { repo, paths = {}, savePrivate = false, backupImages = true } = await store.get([
     'repo', 'paths', 'savePrivate', 'backupImages',
   ]);
-  if (!token || !repo) throw new Error('VelogHub 팝업에서 로그인하고 저장소를 연결해 주세요.');
+  if (!token || !repo) throw new Error('BlogHub 팝업에서 로그인하고 저장소를 연결해 주세요.');
   const pathOf = (id) => paths[repo]?.[id];
   // { id: 경로 | null(잊기) }. 오래 걸린 작업 사이에 다른 글이 기록됐을 수 있어 최신 값에 합친다.
   const remember = async (changes) => {
@@ -70,32 +84,34 @@ async function postFiles(post, backupImages, oldPath) {
 const deletePost = (token, repo, path, message) =>
   commitFiles(token, repo, { files: { [path]: null }, deleteDirs: [imageDir(path)], message });
 
-async function remove(id, token) {
+async function remove(id, token, source) {
   const { repo, pathOf, remember } = await target(token);
-  const oldPath = pathOf(id);
+  const key = source.key(id);
+  const oldPath = pathOf(key);
   if (!oldPath) return 'GitHub에 저장된 적 없는 글이라 지울 파일이 없어요.';
-  // 가짜 삭제 요청으로 백업이 지워지지 않게, velog에서 정말 없어졌는지 확인한다
-  if (await fetchPost(id)) throw new Error('velog에 아직 있는 글이라 지우지 않았어요.');
-  await deletePost(token, repo, oldPath, `[velog] 삭제: ${oldPath.split('/').pop()}`);
-  await remember({ [id]: null });
+  // 가짜 삭제 요청으로 백업이 지워지지 않게, 블로그에서 정말 없어졌는지 확인한다
+  if (await source.fetchPost(id)) throw new Error(`${source.name}에 아직 있는 글이라 지우지 않았어요.`);
+  await deletePost(token, repo, oldPath, `[${source.name}] 삭제: ${oldPath.split('/').pop()}`);
+  await remember({ [key]: null });
   return 'GitHub에서도 지웠어요.';
 }
 
-async function publish(id, token) {
+async function publish(id, token, source) {
   const { repo, savePrivate, backupImages, pathOf, remember } = await target(token);
-  // 페이지가 보낸 내용은 믿지 않고 velog 서버에서 글을 직접 받는다. 실패하면 추측하지 않고 멈춘다.
-  const post = await fetchPost(id);
-  if (!post) throw new Error('velog에서 글을 찾지 못했어요. 비공개 글이면 velog에 로그인돼 있는지 확인해 주세요.');
+  // 페이지가 보낸 내용은 믿지 않고 블로그 서버에서 글을 직접 받는다. 실패하면 추측하지 않고 멈춘다.
+  const post = await source.fetchPost(id);
+  if (!post) throw new Error(`${source.name}에서 글을 찾지 못했어요. 비공개 글이면 로그인돼 있는지 확인해 주세요.`);
   const done = (message) => ({ title: post.title, message });
   if (post.is_temp) return done('임시저장 글이라 저장하지 않았어요.');
-  await store.set({ velogUser: post.username }); // 과거 글 가져오기 칸에 미리 채워 둔다
-  const oldPath = pathOf(post.id);
+  if (source.name === 'velog') await store.set({ velogUser: post.username }); // 과거 글 가져오기 칸에 미리 채워 둔다
+  const key = source.key(post.id);
+  const oldPath = pathOf(key);
 
   if (post.is_private && !savePrivate) {
     if (!oldPath) return done('비공개 글이라 GitHub에 저장하지 않았어요.');
     // 저장했던 글을 비공개로 바꿨으면 저장소에서도 지운다
-    await deletePost(token, repo, oldPath, `[velog] ${post.title} 비공개 전환`);
-    await remember({ [post.id]: null });
+    await deletePost(token, repo, oldPath, `[${source.name}] ${post.title} 비공개 전환`);
+    await remember({ [key]: null });
     return done('비공개로 바뀐 글이라 GitHub에서 지웠어요.');
   }
 
@@ -103,9 +119,9 @@ async function publish(id, token) {
   const has = await commitFiles(token, repo, {
     files,
     deleteDirs,
-    message: (has) => `[velog] ${post.title}${has.has(path) || oldPath ? ' 수정' : ''}`,
+    message: (has) => `[${source.name}] ${post.title}${has.has(path) || oldPath ? ' 수정' : ''}`,
   });
-  await remember({ [post.id]: path });
+  await remember({ [key]: path });
   return done(has.has(path) || oldPath ? 'GitHub에 수정 내용 저장됨' : 'GitHub에 저장됨');
 }
 
@@ -174,7 +190,7 @@ async function record(title, fn) {
     await store.set({ lastSync: { time, title: t, ok: true, message } });
     return message;
   } catch (e) {
-    console.error('[VelogHub] 실패', e);
+    console.error('[BlogHub] 실패', e);
     await store.set({ lastSync: { time, title, ok: false, message: e.message } });
     throw e;
   }
@@ -187,12 +203,12 @@ async function handle(msg, sender) {
   switch (msg.type) {
     case 'publish':
     case 'remove': {
-      if (!sender.url?.startsWith('https://velog.io/')) throw new Error('velog 페이지에서 온 요청이 아니에요');
+      const source = sourceOf(sender.url);
       const removing = msg.type === 'remove';
       return record(removing ? '삭제한 글' : '출간한 글', () => {
         if (msg.error) throw new Error(`${removing ? '삭제' : '출간'} 감지 중 오류: ${msg.error}`);
-        if (typeof msg.id !== 'string' || !msg.id) throw new Error('글 id가 없어요 (velog가 바뀌었을 수 있어요)');
-        return keepAlive(() => (removing ? remove : publish)(msg.id, token));
+        if (typeof msg.id !== 'string' || !msg.id) throw new Error(`글 id가 없어요 (${source.name}가 바뀌었을 수 있어요)`);
+        return keepAlive(() => (removing ? remove : publish)(msg.id, token, source));
       });
     }
     case 'import': {

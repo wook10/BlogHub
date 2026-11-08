@@ -1,20 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
   <!-- PNG는 npm run icons 로 다시 만든다 -->
   <rect width="128" height="128" rx="14" fill="#1f2328"/>
-  <defs>
-    <!-- 둥근 획: 오른쪽으로 치우친 안쪽 타원을 빼서 왼쪽은 굵고 위아래는 얇게, 오른쪽 위는 비워 G의 입을 만든다 -->
-    <mask id="veloghub-g-stroke">
-      <rect width="128" height="128" fill="#fff"/>
-      <ellipse cx="70" cy="64" rx="23" ry="31" fill="#000"/>
-      <path d="M68 61 L128 61 L128 14 Z" fill="#000"/>
-    </mask>
-    <!-- 가로 막대와 턱이 둥근 획 밖으로 삐져나오지 않게 바깥 타원으로 자른다 -->
-    <clipPath id="veloghub-g-outer">
-      <ellipse cx="64" cy="64" rx="38" ry="42"/>
-    </clipPath>
-  </defs>
-  <g transform="translate(14 0) skewX(-12)" fill="#fff">
-    <ellipse cx="64" cy="64" rx="38" ry="42" mask="url(#veloghub-g-stroke)"/>
-    <path d="M66 61 H110 V110 H91 V71 H66 Z" clip-path="url(#veloghub-g-outer)"/>
+  <!-- B: 왼쪽 기둥은 굵게, 둥근 부분의 위아래는 얇게. 안쪽 구멍 두 개는 evenodd로 뚫는다 -->
+  <g transform="translate(14 0) skewX(-12)" fill="#fff" fill-rule="evenodd">
+    <path d="M34 22 H70 C88 22 98 31 98 43 C98 52 92 58 84 61 C96 64 104 72 104 84 C104 98 92 106 74 106 H34 Z
+             M53 34 H68 C77 34 81 39 81 45 C81 52 76 56 68 56 H53 Z
+             M53 68 H71 C81 68 86 73 86 81 C86 89 80 94 71 94 H53 Z"/>
   </g>
 </svg>

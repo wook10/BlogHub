@@ -8,7 +8,7 @@
   const GRAPHQL = 'https://v2.velog.io/graphql';
   const OPS = { WritePost: 'publish', EditPost: 'publish', RemovePost: 'remove' };
   const originalFetch = window.fetch;
-  const send = (msg) => window.postMessage({ source: 'veloghub', ...msg }, location.origin);
+  const send = (msg) => window.postMessage({ source: 'bloghub', ...msg }, location.origin);
 
   function report(op, request, response) {
     if (request.variables?.is_temp) return; // 임시저장은 커밋하지 않는다

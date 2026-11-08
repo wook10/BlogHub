@@ -92,7 +92,7 @@ async function headSha(token, repo, branch) {
     // 커밋이 하나도 없는 빈 저장소(409)에는 Git Data API를 쓸 수 없어서 README로 첫 커밋을 만든다
     await api(token, `/repos/${repo}/contents/README.md`, {
       method: 'PUT',
-      body: { message: 'VelogHub 시작', content: btoa('# velog backup\n') },
+      body: { message: 'BlogHub 시작', content: btoa('# blog backup\n') },
     });
     return (await api(token, `/repos/${repo}/git/ref/heads/${branch}`)).object.sha;
   }
@@ -174,5 +174,5 @@ export const listRepos = (token) => api(token, '/user/repos?affiliation=owner&so
 export const createRepo = (token, name, isPrivate) =>
   api(token, '/user/repos', {
     method: 'POST',
-    body: { name, private: isPrivate, auto_init: true, description: 'velog 글 백업 (VelogHub)' },
+    body: { name, private: isPrivate, auto_init: true, description: '블로그 글 백업 (BlogHub)' },
   });

@@ -71,3 +71,9 @@ test('이미지 폴더, 이름, 상대 링크', async () => {
   assert.equal(relativeLink('posts/a.md', 'posts/images/a/1.png'), 'images/a/1.png');
   assert.equal(relativeLink('posts/리액트/a.md', 'posts/images/a/1.png'), '../images/a/1.png');
 });
+
+test('티스토리 글은 tistory_url을 남긴다', () => {
+  const md = toMarkdown({ ...post, series: null, source: 'tistory', url: 'https://me.tistory.com/1' }, '2026-11-08');
+  assert.match(md, /^tistory_url: https:\/\/me\.tistory\.com\/1$/m);
+  assert.doesNotMatch(md, /velog_url/);
+});

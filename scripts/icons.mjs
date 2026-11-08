@@ -15,7 +15,7 @@ const chrome = [
 if (!chrome) throw new Error('크롬을 찾지 못했어요. CHROME 환경 변수에 크롬 경로를 넣어 주세요.');
 
 const svg = pathToFileURL(resolve('icons/icon.svg')).href;
-const work = mkdtempSync(join(tmpdir(), 'veloghub-icons-'));
+const work = mkdtempSync(join(tmpdir(), 'bloghub-icons-'));
 try {
   for (const size of [16, 32, 48, 128]) {
     const page = join(work, `${size}.html`);

@@ -8,7 +8,9 @@ export function toMarkdown(post, date) {
     `date: ${date}`,
     `tags: ${yaml(post.tags)}`,
     ...(post.series ? [`series: ${yaml(post.series)}`] : []),
-    `velog_url: https://velog.io/@${post.username}/${encodeURIComponent(post.url_slug)}`,
+    post.source === 'tistory'
+      ? `tistory_url: ${post.url}`
+      : `velog_url: https://velog.io/@${post.username}/${encodeURIComponent(post.url_slug)}`,
     '---',
     '',
     post.body,
@@ -16,9 +18,10 @@ export function toMarkdown(post, date) {
   ].join('\n');
 }
 
-const VELOG_IMAGE = /https:\/\/(?:velog\.velcdn\.com|images\.velog\.io)\/[^\s)"'<>\]]+/g;
+// velog 이미지와 티스토리 이미지 (blog.kakaocdn.net)
+const VELOG_IMAGE = /https:\/\/(?:velog\.velcdn\.com|images\.velog\.io|blog\.kakaocdn\.net)\/[^\s)"'<>\]]+/g;
 
-// 본문 속 velog 이미지 주소 (중복 제거)
+// 본문 속 블로그 이미지 주소 (중복 제거)
 export const findImages = (body) => [...new Set(body.match(VELOG_IMAGE) ?? [])];
 
 // 이미지 주소를 통째로 하나씩 바꾼다. 문자열 치환을 하면 a.png가 a.png?w=300의 앞부분까지 바꿔 버린다.

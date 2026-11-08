@@ -2,14 +2,14 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <title>VelogHub</title>
+  <title>BlogHub</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <h1>VelogHub</h1>
+  <h1>BlogHub</h1>
 
   <section id="login" hidden>
-    <p>velog 글을 저장할 GitHub 계정으로 로그인하세요.</p>
+    <p>블로그 글을 저장할 GitHub 계정으로 로그인하세요.</p>
     <button id="login-btn">GitHub로 로그인</button>
   </section>
 
@@ -32,7 +32,7 @@
     <form id="create-form">
       <label for="repo-name">새 저장소 만들기</label>
       <div class="row">
-        <input id="repo-name" required placeholder="my-velog" pattern="[A-Za-z0-9._-]+">
+        <input id="repo-name" required placeholder="my-blog" pattern="[A-Za-z0-9._-]+">
         <button>만들기</button>
       </div>
       <label><input type="checkbox" id="repo-private"> 새 저장소를 비공개로 만들기</label>

@@ -1,10 +1,10 @@
 {
-  "name": "veloghub",
+  "name": "bloghub",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test",
     "icons": "node scripts/icons.mjs",
-    "zip": "git archive --format=zip -o veloghub.zip HEAD manifest.json src popup icons"
+    "zip": "git archive --format=zip -o bloghub.zip HEAD manifest.json src popup icons"
   }
 }
