@@ -78,5 +78,58 @@ test('commitFiles: 바뀐 게 없으면 커밋하지 않는다', async () => {
     return { ok: true, status: 200, json: async () => res };
   };
   await commitFiles('t', 'me/r', { files: { 'posts/a.md': 'x' }, message: 'm' });
-  assert.deepEqual(methods, ['GET', 'GET', 'GET', 'GET', 'POST']); // 트리만 만들어 보고 커밋·ref 변경 없음
+  assert.deepEqual(methods, ['GET', 'GET', 'GET', 'GET', 'GET', 'POST']); // 트리만 만들어 보고 커밋·ref 변경 없음
+});
+
+// GitHub 응답을 경로별로 흉내 내는 가짜 fetch. handler가 undefined를 돌려주면 기본 응답을 쓴다.
+function fakeGitHub(handler = () => undefined) {
+  const calls = [];
+  let head = 'h1';
+  globalThis.fetch = async (url, init) => {
+    const method = init.method ?? 'GET';
+    const path = url.replace('https://api.github.com/repos/me/r', '');
+    const body = init.body && JSON.parse(init.body);
+    calls.push({ method, path, body });
+    const custom = handler(method, path, body, calls);
+    if (custom) return custom;
+    const ok = (data) => ({ ok: true, status: 200, json: async () => data });
+    if (path === '') return ok({ default_branch: 'main' });
+    if (path === '/git/ref/heads/main') return ok({ object: { sha: head } });
+    if (path.startsWith('/git/commits/')) return ok({ tree: { sha: `tree-${path.split('/').pop()}` } });
+    if (path.includes('recursive')) return ok({ tree: [] });
+    if (path === '/git/trees') return ok({ sha: 'newtree' });
+    if (path === '/git/commits') return ok({ sha: 'c' });
+    return ok({});
+  };
+  return { calls, moveHead: (sha) => (head = sha) };
+}
+
+test('commitFiles: 그사이 다른 커밋이 끼어들면 최신 커밋 위에서 다시 한다', async () => {
+  const { commitFiles } = await import('../src/github.js');
+  let patches = 0;
+  const gh = fakeGitHub((method, path) => {
+    if (method === 'PATCH' && ++patches === 1) {
+      gh.moveHead('h2'); // 다른 출간이 먼저 커밋됨
+      return { ok: false, status: 422, json: async () => ({ message: 'Update is not a fast forward' }) };
+    }
+  });
+  await commitFiles('t', 'me/r', { files: { 'posts/a.md': 'x' }, message: 'm' });
+  const commits = gh.calls.filter((c) => c.path === '/git/commits' && c.method === 'POST');
+  assert.deepEqual(commits.map((c) => c.body.parents), [['h1'], ['h2']]);
+  assert.equal(patches, 2);
+});
+
+test('commitFiles: 빈 저장소면 README로 첫 커밋을 만들고 이어서 커밋한다', async () => {
+  const { commitFiles } = await import('../src/github.js');
+  let empty = true;
+  const gh = fakeGitHub((method, path) => {
+    if (path === '/contents/README.md') {
+      empty = false;
+      return { ok: true, status: 201, json: async () => ({}) };
+    }
+    if (path === '/git/ref/heads/main' && empty) return { ok: false, status: 409, json: async () => ({ message: 'Git Repository is empty.' }) };
+  });
+  await commitFiles('t', 'me/r', { files: { 'posts/a.md': 'x' }, message: 'm' });
+  assert.ok(gh.calls.some((c) => c.method === 'PUT' && c.path === '/contents/README.md'));
+  assert.equal(gh.calls.at(-1).method, 'PATCH');
 });

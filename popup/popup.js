@@ -20,7 +20,7 @@ async function render() {
   $('backup-images').checked = backupImages;
   if (velogUser && !$('velog-user').value) $('velog-user').value = velogUser;
   $('import-btn').disabled = !!importStatus;
-  $('import-status').textContent = importStatus ?? '공개 글만 가져와요.';
+  $('import-status').textContent = importStatus ?? '비공개 글은 "비공개 글도 저장"을 켜야 가져와요.';
   if (lastSync) {
     const time = new Date(lastSync.time).toLocaleString();
     $('last-sync').textContent = `최근 기록 (${time}) "${lastSync.title}": ${lastSync.message}`;

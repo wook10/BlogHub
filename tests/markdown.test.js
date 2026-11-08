@@ -38,10 +38,21 @@ test('시리즈 글은 시리즈 폴더에, 아니면 posts 바로 아래에 둔
   assert.equal(filePath({ ...post, series: null }, '2026-11-07'), 'posts/2026-11-07-React-상태-관리.md');
 });
 
-test('파일 경로에서 경로를 깨는 문자를 바꾼다', () => {
-  assert.equal(filePath({ url_slug: 'a/b?c d' }, '2026-11-07'), 'posts/2026-11-07-a-b-c-d.md');
-  assert.equal(filePath({ url_slug: 'x', series: '../비밀' }, '2026-11-07'), 'posts/-비밀/2026-11-07-x.md');
-  assert.equal(filePath({ url_slug: 'x', series: '..' }, '2026-11-07'), 'posts/untitled/2026-11-07-x.md');
+test('파일 경로에서 경로를 깨는 문자를 바꾸고, 바꿨으면 글 id를 붙여 겹치지 않게 한다', () => {
+  assert.equal(filePath({ id: 'abcdef1234', url_slug: 'a/b?c d' }, '2026-11-07'), 'posts/2026-11-07-a-b-c-d-abcdef12.md');
+  assert.notEqual(
+    filePath({ id: '11111111x', url_slug: 'c#-tips' }, '2026-11-07'),
+    filePath({ id: '22222222x', url_slug: 'c%-tips' }, '2026-11-07'),
+  );
+  assert.equal(filePath({ id: 'i', url_slug: 'x', series: '../비밀' }, '2026-11-07'), 'posts/-비밀/2026-11-07-x.md');
+  assert.equal(filePath({ id: 'i', url_slug: 'x', series: '..' }, '2026-11-07'), 'posts/untitled/2026-11-07-x.md');
+});
+
+test('이미지 링크는 주소를 통째로 바꿔서, 앞부분이 같은 다른 주소를 건드리지 않는다', async () => {
+  const { replaceImages } = await import('../src/markdown.js');
+  const a = 'https://velog.velcdn.com/images/u/a.png';
+  const body = `![](${a}) ![](${a}?w=300)`;
+  assert.equal(replaceImages(body, new Map([[a, 'images/x/1.png']])), `![](images/x/1.png) ![](${a}?w=300)`);
 });
 
 test('본문에서 velog 이미지만 중복 없이 찾는다', async () => {

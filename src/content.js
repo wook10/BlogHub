@@ -1,4 +1,4 @@
-// velog 페이지의 확장 쪽(isolated world). velog-hook.js가 보낸 출간 소식을 백그라운드로 넘기고 결과를 알림으로 보여 준다.
+// velog 페이지의 확장 쪽(isolated world). velog-hook.js가 보낸 소식을 백그라운드로 넘기고 결과를 알림으로 보여 준다.
 
 function toast(text, ok) {
   const el = document.createElement('div');
@@ -12,14 +12,13 @@ function toast(text, ok) {
 }
 
 window.addEventListener('message', async (e) => {
-  // 같은 창에서 온 VelogHub 메시지만 받는다 (광고 iframe 등은 제외)
+  // 같은 창에서 온 VelogHub 메시지만 받는다 (광고 iframe 등은 제외). 내용 확인은 백그라운드가 한다.
   if (e.source !== window || e.data?.source !== 'veloghub') return;
+  const { op, id, error } = e.data;
+  if (op !== 'publish' && op !== 'remove') return;
   try {
-    const { post, error, removedId } = e.data;
-    const res = await chrome.runtime.sendMessage(
-      removedId ? { type: 'remove', id: removedId } : { type: 'publish', post, error },
-    );
-    toast(res.ok ? res.data : `GitHub 저장 실패: ${res.error}`, res.ok);
+    const res = await chrome.runtime.sendMessage({ type: op, id, error });
+    toast(res.ok ? res.data : `GitHub ${op === 'remove' ? '삭제' : '저장'} 실패: ${res.error}`, res.ok);
   } catch {
     toast('VelogHub가 업데이트됐어요. 페이지를 새로고침해 주세요.', false);
   }

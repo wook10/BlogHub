@@ -44,24 +44,35 @@ export async function pollToken(deviceCode, interval, { wait = sleep, onTick } =
   }
 }
 
+// GitHub가 요청 제한(403/429)을 알려 주면 그만큼 기다렸다 다시 하는 횟수
+const RATE_LIMIT_RETRIES = 3;
+
 async function api(token, path, { method = 'GET', body } = {}) {
-  const res = await fetch(API + path, {
-    method,
-    cache: 'no-store', // 캐시된 옛 sha로 덮어쓰다 충돌(409)나지 않게
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-    body: body && JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  // 422 같은 오류는 message가 뭉뚱그려져 있고, 진짜 이유는 errors[0].message에 있다.
-  if (!res.ok) {
-    const message = data.errors?.[0]?.message ?? data.message ?? `GitHub API 실패 (${res.status})`;
-    throw Object.assign(new Error(message), { status: res.status });
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(API + path, {
+      method,
+      cache: 'no-store', // 캐시된 옛 값으로 커밋하다 충돌나지 않게
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+      body: body && JSON.stringify(body),
+    });
+    const retryAfter = Number(res.headers?.get('retry-after'));
+    const resetAt = res.headers?.get('x-ratelimit-remaining') === '0' && Number(res.headers.get('x-ratelimit-reset')) * 1000;
+    if ((res.status === 403 || res.status === 429) && (retryAfter || resetAt) && attempt < RATE_LIMIT_RETRIES) {
+      await sleep(Math.min(retryAfter ? retryAfter * 1000 : resetAt - Date.now(), 10 * 60_000) + 1000);
+      continue;
+    }
+    const data = await res.json().catch(() => ({}));
+    // 422 같은 오류는 message가 뭉뚱그려져 있고, 진짜 이유는 errors[0].message에 있다.
+    if (!res.ok) {
+      const message = data.errors?.[0]?.message ?? data.message ?? `GitHub API 실패 (${res.status})`;
+      throw Object.assign(new Error(message), { status: res.status });
+    }
+    return data;
   }
-  return data;
 }
 
 function bytesToBase64(bytes) {
@@ -72,6 +83,26 @@ function bytesToBase64(bytes) {
 
 const deleted = (path) => ({ path, mode: '100644', type: 'blob', sha: null });
 
+// 기본 브랜치의 최신 커밋 sha
+async function headSha(token, repo, branch) {
+  try {
+    return (await api(token, `/repos/${repo}/git/ref/heads/${branch}`)).object.sha;
+  } catch (e) {
+    if (e.status !== 409) throw e;
+    // 커밋이 하나도 없는 빈 저장소(409)에는 Git Data API를 쓸 수 없어서 README로 첫 커밋을 만든다
+    await api(token, `/repos/${repo}/contents/README.md`, {
+      method: 'PUT',
+      body: { message: 'VelogHub 시작', content: btoa('# velog backup\n') },
+    });
+    return (await api(token, `/repos/${repo}/git/ref/heads/${branch}`)).object.sha;
+  }
+}
+
+// 이미지를 연달아 올릴 때 GitHub의 "1분에 콘텐츠 생성 80번" 제한에 걸리지 않게 둔 간격
+const BLOB_GAP_MS = 800;
+// 커밋하는 사이 다른 커밋이 끼어들면(non-fast-forward) 최신 상태 위에서 다시 하는 횟수
+const COMMIT_RETRIES = 3;
+
 // 여러 파일 변경을 커밋 하나로 만든다 (Git Data API).
 // files: { 경로: 문자열 | Uint8Array(이미지) | null(삭제) }
 // deleteDirs: 이 폴더 안의 파일 중 files에 없는 것은 지운다 (글에서 빠진 이미지 정리)
@@ -79,44 +110,59 @@ const deleted = (path) => ({ path, mode: '100644', type: 'blob', sha: null });
 // 반환: 커밋 전 저장소에 있던 경로 Set. 바뀐 게 없으면 커밋하지 않는다.
 export async function commitFiles(token, repo, { files, deleteDirs = [], message }) {
   const { default_branch: branch } = await api(token, `/repos/${repo}`);
-  const ref = await api(token, `/repos/${repo}/git/ref/heads/${branch}`);
-  const head = await api(token, `/repos/${repo}/git/commits/${ref.object.sha}`);
-  const tree = await api(token, `/repos/${repo}/git/trees/${head.tree.sha}?recursive=1`);
-  // 목록이 잘리면 무엇을 지울지 확신할 수 없으니 멈춘다 (파일 10만 개 이상인 저장소)
-  if (tree.truncated) throw new Error('저장소 파일이 너무 많아요.');
-  const has = new Set(tree.tree.filter((e) => e.type === 'blob').map((e) => e.path));
+  await headSha(token, repo, branch); // 빈 저장소면 여기서 첫 커밋을 만든다 (blob을 올리기 전에 필요)
 
-  const entries = [];
+  // 이미지는 한 번만 올려 두고, 다시 시도할 때는 sha만 다시 쓴다
+  const writes = [];
+  let blobs = 0;
   for (const [path, content] of Object.entries(files)) {
-    // 없는 파일을 지우라고 하면 GitHub가 오류를 내므로 있는 것만 지운다
-    if (content === null) {
-      if (has.has(path)) entries.push(deleted(path));
-    } else if (typeof content === 'string') {
-      entries.push({ path, mode: '100644', type: 'blob', content });
-    } else {
-      const blob = await api(token, `/repos/${repo}/git/blobs`, {
-        method: 'POST',
-        body: { content: bytesToBase64(content), encoding: 'base64' },
-      });
-      entries.push({ path, mode: '100644', type: 'blob', sha: blob.sha });
+    if (content === null) continue;
+    if (typeof content === 'string') {
+      writes.push({ path, mode: '100644', type: 'blob', content });
+      continue;
+    }
+    if (blobs++) await sleep(BLOB_GAP_MS);
+    const blob = await api(token, `/repos/${repo}/git/blobs`, {
+      method: 'POST',
+      body: { content: bytesToBase64(content), encoding: 'base64' },
+    });
+    writes.push({ path, mode: '100644', type: 'blob', sha: blob.sha });
+  }
+
+  for (let attempt = 1; ; attempt++) {
+    const parent = await headSha(token, repo, branch);
+    const head = await api(token, `/repos/${repo}/git/commits/${parent}`);
+    const tree = await api(token, `/repos/${repo}/git/trees/${head.tree.sha}?recursive=1`);
+    // 목록이 잘리면 무엇을 지울지 확신할 수 없으니 멈춘다 (파일 10만 개 이상인 저장소)
+    if (tree.truncated) throw new Error('저장소 파일이 너무 많아요.');
+    const has = new Set(tree.tree.filter((e) => e.type === 'blob').map((e) => e.path));
+
+    const entries = [...writes];
+    for (const [path, content] of Object.entries(files)) {
+      // 없는 파일을 지우라고 하면 GitHub가 오류를 내므로 있는 것만 지운다
+      if (content === null && has.has(path)) entries.push(deleted(path));
+    }
+    for (const path of has) {
+      if (!(path in files) && deleteDirs.some((dir) => path.startsWith(`${dir}/`))) entries.push(deleted(path));
+    }
+    if (!entries.length) return has;
+
+    const newTree = await api(token, `/repos/${repo}/git/trees`, {
+      method: 'POST',
+      body: { base_tree: head.tree.sha, tree: entries },
+    });
+    if (newTree.sha === head.tree.sha) return has; // 내용이 그대로면 빈 커밋을 만들지 않는다
+    const commit = await api(token, `/repos/${repo}/git/commits`, {
+      method: 'POST',
+      body: { message: typeof message === 'function' ? message(has) : message, tree: newTree.sha, parents: [parent] },
+    });
+    try {
+      await api(token, `/repos/${repo}/git/refs/heads/${branch}`, { method: 'PATCH', body: { sha: commit.sha } });
+      return has;
+    } catch (e) {
+      if (e.status !== 422 || attempt >= COMMIT_RETRIES) throw e;
     }
   }
-  for (const path of has) {
-    if (!(path in files) && deleteDirs.some((dir) => path.startsWith(`${dir}/`))) entries.push(deleted(path));
-  }
-  if (!entries.length) return has;
-
-  const newTree = await api(token, `/repos/${repo}/git/trees`, {
-    method: 'POST',
-    body: { base_tree: head.tree.sha, tree: entries },
-  });
-  if (newTree.sha === head.tree.sha) return has; // 내용이 그대로면 빈 커밋을 만들지 않는다
-  const commit = await api(token, `/repos/${repo}/git/commits`, {
-    method: 'POST',
-    body: { message: typeof message === 'function' ? message(has) : message, tree: newTree.sha, parents: [ref.object.sha] },
-  });
-  await api(token, `/repos/${repo}/git/refs/heads/${branch}`, { method: 'PATCH', body: { sha: commit.sha } });
-  return has;
 }
 
 export const getUser = (token) => api(token, '/user');

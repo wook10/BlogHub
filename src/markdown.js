@@ -21,6 +21,9 @@ const VELOG_IMAGE = /https:\/\/(?:velog\.velcdn\.com|images\.velog\.io)\/[^\s)"'
 // 본문 속 velog 이미지 주소 (중복 제거)
 export const findImages = (body) => [...new Set(body.match(VELOG_IMAGE) ?? [])];
 
+// 이미지 주소를 통째로 하나씩 바꾼다. 문자열 치환을 하면 a.png가 a.png?w=300의 앞부분까지 바꿔 버린다.
+export const replaceImages = (body, links) => body.replace(VELOG_IMAGE, (url) => links.get(url) ?? url);
+
 // posts/시리즈/2026-11-08-a.md → posts/images/2026-11-08-a
 export const imageDir = (mdPath) => `posts/images/${mdPath.split('/').pop().replace(/\.md$/, '')}`;
 
@@ -47,5 +50,8 @@ const clean = (s) => s.replace(/[\\/:*?"<>|#%\x00-\x1f]+/g, '-').trim().replace(
 // 시리즈에 속한 글은 posts/시리즈명/ 폴더에 둔다.
 export function filePath(post, date) {
   const dir = post.series ? `posts/${clean(post.series)}` : 'posts';
-  return `${dir}/${date}-${clean(post.url_slug).replace(/\s+/g, '-')}.md`;
+  const name = clean(post.url_slug).replace(/\s+/g, '-');
+  // 문자를 바꿨으면 다른 글(c#-tips와 c%-tips)과 이름이 겹칠 수 있어 글 id 앞부분을 붙인다
+  const unique = name === post.url_slug ? name : `${name}-${post.id.slice(0, 8)}`;
+  return `${dir}/${date}-${unique}.md`;
 }
