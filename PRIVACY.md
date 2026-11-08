@@ -30,7 +30,7 @@ BlogHub는 개발자가 운영하는 서버가 없으며, 사용자 정보를 �
 
 ## 문의
 
-https://github.com/wook10/VelogHub/issues
+https://github.com/wook10/BlogHub/issues
 
 ---
 
@@ -43,4 +43,4 @@ BlogHub has no server of its own and does not send any of your data to the devel
 - **Where data goes:** only to GitHub (to sign in and commit files to the repository you chose) and to velog and Tistory (to detect publish, edit and delete actions and to read your post content and images).
 - **No tracking:** no ads, analytics or tracking code.
 - **Control:** log out in the popup or remove the extension to delete local data; revoke BlogHub under GitHub → Settings → Applications to disable the token.
-- **Contact:** https://github.com/wook10/VelogHub/issues
+- **Contact:** https://github.com/wook10/BlogHub/issues

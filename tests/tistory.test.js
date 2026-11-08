@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { imagesToHtml, unescapeImgSrc, parsePostPage, normalize, fetchPost, blogOrigin, listPostIds, originOf } from '../src/tistory.js';
+import { imagesToHtml, unescapeImgSrc, parsePostPage, normalize, fetchPost, blogOrigin, listPosts, originOf } from '../src/tistory.js';
 
 const origin = 'https://me.tistory.com';
 const raw = {
@@ -93,16 +93,20 @@ test('normalize: 쉼표로 온 태그', () => {
   assert.deepEqual(normalize({ ...raw, tags: 'react, hooks' }, origin).tags, ['react', 'hooks']);
 });
 
-test('listPostIds: 여러 쪽의 글 번호를 모으고, 로그인 화면이면 오류', async () => {
-  const pages = { 1: [{ id: 3 }, { id: 2 }], 2: [{ id: 1 }] };
+test('listPosts: 여러 쪽의 글 번호·제목을 모으고, 로그인 화면이면 오류', async () => {
+  const pages = { 1: [{ id: 3, title: 'c', visibility: 20 }, { id: 2, title: 'b', visibility: 0 }], 2: [{ id: 1, title: 'a', visibility: 20 }] };
   globalThis.fetch = async (url) => ({
     ok: true,
     json: async () => ({ totalCount: 3, items: pages[new URL(url).searchParams.get('page')] ?? [] }),
   });
-  assert.deepEqual(await listPostIds(origin), ['3', '2', '1']);
+  assert.deepEqual(await listPosts(origin), [
+    { id: '3', title: 'c', isPrivate: false },
+    { id: '2', title: 'b', isPrivate: true },
+    { id: '1', title: 'a', isPrivate: false },
+  ]);
 
   globalThis.fetch = async () => ({ ok: true, json: async () => { throw new SyntaxError('<html>'); } });
-  await assert.rejects(listPostIds(origin), /로그인/);
+  await assert.rejects(listPosts(origin), /로그인/);
 });
 
 test('originOf: 블로그 아이디로 주소, 이상한 아이디는 오류', () => {

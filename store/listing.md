@@ -13,9 +13,9 @@ Partner Center(https://partner.microsoft.com/dashboard/microsoftedge)에서 새 
 | --- | --- |
 | Category | Developer tools (없으면 Productivity) |
 | Privacy policy required | Yes |
-| Privacy policy URL | https://github.com/wook10/VelogHub/blob/main/PRIVACY.md |
-| Website | https://github.com/wook10/VelogHub |
-| Support contact | https://github.com/wook10/VelogHub/issues |
+| Privacy policy URL | https://github.com/wook10/BlogHub/blob/main/PRIVACY.md |
+| Website | https://github.com/wook10/BlogHub |
+| Support contact | https://github.com/wook10/BlogHub/issues |
 | Mature content | No |
 
 ## Store listing (Korean)
@@ -57,7 +57,7 @@ BlogHub는 velog나 티스토리에 글을 발행하는 순간, 그 글을 내 G
 BlogHub는 별도 서버가 없습니다. GitHub 토큰은 브라우저 안에만 저장되고, 글은 GitHub와 velog·티스토리 사이에서만 오갑니다.
 광고, 분석, 추적 코드를 쓰지 않습니다.
 
-BlogHub는 velog나 티스토리의 공식 확장이 아닙니다. 소스 코드: https://github.com/wook10/VelogHub
+BlogHub는 velog나 티스토리의 공식 확장이 아닙니다. 소스 코드: https://github.com/wook10/BlogHub
 ```
 
 **Search terms** (하나씩 입력)

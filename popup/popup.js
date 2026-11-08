@@ -12,12 +12,16 @@ async function send(msg) {
 }
 
 let reposLoaded = false;
+let listing = false; // 목록을 불러오는 중
+let pendingImports = 0; // 차례를 기다리거나 가져오는 중인 글 수 (그동안 목록을 새로 만들지 않게)
+let queue = Promise.resolve(); // 고른 글을 차례대로 가져온다 (여러 개를 빠르게 눌러도 하나씩)
 
 async function render() {
   const {
-    token, user, repo, pending, authError, lastSync, savePrivate = false, backupImages = true, importStatus,
+    token, user, repo, pending, authError, lastSync, savePrivate = false, backupImages = true, autoSave = true, importStatus,
     importBlog = 'velog', velogUser, importUser = velogUser, // velogUser: 1.0.0이 저장한 값
   } = await store.get();
+  $('auto-save').checked = autoSave;
   $('save-private').checked = savePrivate;
   $('backup-images').checked = backupImages;
   // 마지막으로 글을 저장한 블로그와 아이디를 미리 채운다 (직접 고친 값은 그대로 둔다)
@@ -26,7 +30,8 @@ async function render() {
     $('import-user').value = importUser;
     showPlaceholder();
   }
-  $('import-btn').disabled = !!importStatus;
+  $('import-btn').disabled = !!importStatus || pendingImports > 0;
+  $('list-btn').disabled = !!importStatus || listing || pendingImports > 0;
   $('import-status').textContent = importStatus ?? '비공개 글은 "비공개 글도 저장"을 켜야 가져와요.';
   if (lastSync) {
     const time = new Date(lastSync.time).toLocaleString();
@@ -38,6 +43,7 @@ async function render() {
   $('login').hidden = !!token || waiting;
   $('pending').hidden = !!token || !waiting;
   $('main').hidden = !token;
+  $('settings-btn').hidden = !token;
   if (authError) $('error').textContent = authError;
 
   if (waiting) $('user-code').textContent = pending.userCode;
@@ -81,10 +87,76 @@ $('create-form').onsubmit = async (e) => {
   }
 };
 
+// 톱니바퀴를 누르면 설정 화면으로 바꾸고, 다시 누르면 돌아온다
+$('settings-btn').onclick = () => {
+  const open = $('settings').hidden;
+  $('settings').hidden = !open;
+  $('main').classList.toggle('settings-open', open); // 설정을 펼치면 설정만 보인다
+  $('settings-btn').setAttribute('aria-expanded', String(open));
+};
+$('auto-save').onchange = (e) => store.set({ autoSave: e.target.checked });
 $('save-private').onchange = (e) => store.set({ savePrivate: e.target.checked });
 $('backup-images').onchange = (e) => store.set({ backupImages: e.target.checked });
-$('import-btn').onclick = () =>
+$('import-btn').onclick = () => {
+  $('missing').hidden = true; // 한 번에 가져오면 목록은 의미가 없어진다
   send({ type: 'import', blog: $('import-blog').value, username: $('import-user').value }).catch(() => {});
+};
+
+// 저장소에 아직 없는 글 목록을 보여 주고, 글마다 가져오기 버튼을 단다
+$('list-btn').onclick = async () => {
+  const blog = $('import-blog').value;
+  const username = $('import-user').value;
+  const list = $('missing');
+  listing = $('list-btn').disabled = true;
+  list.hidden = false;
+  list.replaceChildren(item('목록을 불러오는 중…'));
+  const posts = await send({ type: 'missingPosts', blog, username }).catch(() => null);
+  listing = $('list-btn').disabled = false;
+  if (!posts) return (list.hidden = true);
+  if (!posts.length) return list.replaceChildren(item('저장소에 없는 글이 없어요.'));
+  list.replaceChildren(
+    ...posts.map((p) => {
+      const btn = document.createElement('button');
+      btn.textContent = '가져오기';
+      btn.onclick = () => {
+        btn.disabled = true;
+        btn.textContent = '대기 중';
+        pendingImports++;
+        $('list-btn').disabled = true;
+        queue = queue.then(async () => {
+          btn.textContent = '가져오는 중';
+          const ok = await send({ type: 'importOne', blog, username, id: String(p.id) }).then(
+            () => true,
+            () => false,
+          );
+          if (ok) {
+            li.remove();
+          } else {
+            btn.disabled = false;
+            btn.textContent = '다시';
+          }
+          if (!list.children.length) list.replaceChildren(item('모두 가져왔어요.'));
+          if (--pendingImports === 0) render();
+        });
+      };
+      const li = item(`${p.title || '(제목 없음)'}${p.isPrivate ? ' 🔒' : ''}`, btn);
+      return li;
+    }),
+  );
+  // 글이 5개를 넘으면 5줄 높이에서 멈추고 나머지는 스크롤로
+  const rows = list.children;
+  list.style.maxHeight =
+    rows.length > 5 ? `${rows[5].getBoundingClientRect().top - rows[0].getBoundingClientRect().top}px` : '';
+};
+
+function item(text, button) {
+  const li = document.createElement('li');
+  const span = document.createElement('span');
+  span.textContent = text;
+  span.title = text;
+  li.append(span, ...(button ? [button] : []));
+  return li;
+}
 
 // 고른 블로그에 맞게 어떤 아이디를 넣는지 보여 준다
 function showPlaceholder() {

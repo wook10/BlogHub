@@ -131,7 +131,8 @@ async function remove(id, token, source) {
   return 'GitHub에서도 지웠어요.';
 }
 
-async function publish(id, token, source) {
+// commit: false면 커밋은 하지 않고, 비공개로 바뀐 글을 저장소에서 지우는 일만 한다 ("발행하면 바로 저장"이 꺼졌을 때)
+async function publish(id, token, source, { commit = true } = {}) {
   const { repo, savePrivate, backupImages, pathOf, remember } = await target(token);
   // 페이지가 보낸 내용은 믿지 않고 블로그 서버에서 글을 직접 받는다. 실패하면 추측하지 않고 멈춘다.
   const post = await source.fetchPost(id);
@@ -149,6 +150,14 @@ async function publish(id, token, source) {
     await remember({ [key]: null });
     return done('비공개로 바뀐 글이라 GitHub에서 지웠어요.');
   }
+  if (!commit) {
+    // 이미 저장된 글의 수정은 "목록 보고 하나씩"에 나오지 않으므로 다르게 안내한다
+    return done(
+      oldPath
+        ? '자동 저장이 꺼져 있어 수정 내용을 저장하지 않았어요. 반영하려면 설정을 켜고 다시 저장해 주세요.'
+        : '자동 저장이 꺼져 있어 저장하지 않았어요. 팝업의 "목록 보고 하나씩"에서 가져올 수 있어요.',
+    );
+  }
 
   const { path, files, deleteDirs } = await postFiles(post, backupImages, oldPath);
   const has = await commitFiles(token, repo, {
@@ -157,21 +166,48 @@ async function publish(id, token, source) {
     message: (has) => `[${source.name}] ${post.title}${has.has(path) || oldPath ? ' 수정' : ''}`,
   });
   await remember({ [key]: path });
-  return done(has.has(path) || oldPath ? 'GitHub에 수정 내용 저장됨' : 'GitHub에 저장됨');
+  return { ...done(has.has(path) || oldPath ? 'GitHub에 수정 내용 저장됨' : 'GitHub에 저장됨'), saved: true };
 }
 
 // 이미지 메모리와 GitHub 요청이 한꺼번에 몰리지 않게 이만큼씩 나눠 커밋한다
 const IMPORT_CHUNK = 10;
 
-// 과거 글 목록. load는 목록의 한 항목을 저장할 글로 바꾼다 (지워졌으면 null).
-// velog는 목록에 글 내용까지 오고, 티스토리는 글 번호만 와서 한 글씩 다시 읽는다.
+// 블로그 종류와 아이디로 어느 블로그인지 (팝업에서 온 요청)
+const sourceFor = (blog, username) => (blog === 'tistory' ? tistorySource(tistory.originOf(username)) : velogSource);
+
+// 과거 글 목록 (최신 글부터).
+// load: 목록의 한 항목을 저장할 글로 바꾼다 (지워졌으면 null). velog는 목록에 글 내용까지 오고, 티스토리는 한 글씩 다시 읽는다.
+// brief: 팝업 목록에 보여 줄 { id, title, isPrivate, isTemp }
 async function postList(blog, username, onPage) {
+  const source = sourceFor(blog, username);
   if (blog === 'tistory') {
-    const origin = tistory.originOf(username);
-    const source = tistorySource(origin);
-    return { source, items: await tistory.listPostIds(origin, onPage), load: (id) => source.fetchPost(id) };
+    const items = await tistory.listPosts(tistory.originOf(username), onPage);
+    return { source, items, load: (item) => source.fetchPost(item.id), brief: (item) => ({ ...item, isTemp: false }) };
   }
-  return { source: velogSource, items: await fetchAllPosts(username, onPage), load: async (item) => normalize(item) };
+  return {
+    source,
+    items: await fetchAllPosts(username, onPage),
+    load: async (item) => normalize(item),
+    // 정보가 빠져 저장할 수 없는 글은 목록에서 뺀다 (한 번에 가져오기도 건너뛰는 글)
+    brief: (item) => {
+      try {
+        const p = normalize(item);
+        return { id: p.id, title: p.title, isPrivate: p.is_private, isTemp: p.is_temp };
+      } catch {
+        return null;
+      }
+    },
+  };
+}
+
+// 저장소에 아직 없는 과거 글 목록 (팝업에서 하나씩 골라 가져오기)
+async function missingPosts(blog, username, token) {
+  const { pathOf, savePrivate } = await target(token);
+  const { source, items, brief } = await postList(blog, username);
+  // 저장되지 않을 글(임시저장, 비공개인데 설정이 꺼짐)은 목록에 보이지 않게 한다
+  return items
+    .map(brief)
+    .filter((p) => p && !p.isTemp && (savePrivate || !p.isPrivate) && !pathOf(source.key(String(p.id))));
 }
 
 // 블로그에 쓴 글 전체를 가져온다
@@ -250,6 +286,13 @@ async function record(title, fn) {
   }
 }
 
+// 과거 글 가져오기 요청의 블로그 종류와 아이디 확인
+function checkImportTarget(msg) {
+  if (msg.blog !== 'velog' && msg.blog !== 'tistory') throw new Error('블로그 종류를 골라 주세요.');
+  if (typeof msg.username !== 'string' || !msg.username.trim()) throw new Error('블로그 아이디를 입력해 주세요.');
+  if (msg.blog === 'tistory') tistory.originOf(msg.username); // 이상한 아이디는 시작 전에 알린다
+}
+
 let importing = false; // 서비스 워커 안에서 하나만 돌게 (storage 확인은 동시에 두 번 통과할 수 있음)
 
 async function handle(msg, sender) {
@@ -259,16 +302,17 @@ async function handle(msg, sender) {
     case 'remove': {
       const source = sourceOf(sender.url);
       const removing = msg.type === 'remove';
+      // "발행하면 바로 저장"을 끄면 발행·수정은 커밋하지 않는다 (나중에 "목록 보고 하나씩"으로 고른다).
+      // 그래도 블로그에서 지운 글과 비공개로 바꾼 글은 저장소에서 지운다 (공개 저장소에 남지 않게).
+      const { autoSave = true } = await store.get('autoSave');
       return record(removing ? '삭제한 글' : '출간한 글', () => {
         if (msg.error) throw new Error(`${removing ? '삭제' : '출간'} 감지 중 오류: ${msg.error}`);
         if (typeof msg.id !== 'string' || !msg.id) throw new Error(`글 id가 없어요 (${source.name}가 바뀌었을 수 있어요)`);
-        return keepAlive(() => (removing ? remove : publish)(msg.id, token, source));
+        return keepAlive(() => (removing ? remove(msg.id, token, source) : publish(msg.id, token, source, { commit: autoSave })));
       });
     }
     case 'import': {
-      if (msg.blog !== 'velog' && msg.blog !== 'tistory') throw new Error('블로그 종류를 골라 주세요.');
-      if (typeof msg.username !== 'string' || !msg.username.trim()) throw new Error('블로그 아이디를 입력해 주세요.');
-      if (msg.blog === 'tistory') tistory.originOf(msg.username); // 이상한 아이디는 시작 전에 알린다
+      checkImportTarget(msg);
       if (importing) throw new Error('이미 가져오는 중이에요.');
       importing = true;
       await store.set({ importStatus: '시작하는 중' });
@@ -280,6 +324,32 @@ async function handle(msg, sender) {
           store.remove('importStatus');
         });
       return null;
+    }
+    case 'missingPosts':
+      checkImportTarget(msg);
+      return keepAlive(() => missingPosts(msg.blog, msg.username.trim(), token));
+    case 'importOne': {
+      checkImportTarget(msg);
+      if (typeof msg.id !== 'string' || !msg.id) throw new Error('글을 골라 주세요.');
+      // 한 번에 가져오기가 도는 중에는 받지 않는다 (같은 글을 두 번 커밋하지 않게)
+      if (importing) throw new Error('다른 가져오기가 끝난 뒤에 해 주세요.');
+      importing = true;
+      await store.set({ importStatus: '글 하나 가져오는 중' });
+      try {
+        // 글 하나 가져오기는 출간과 같다: 블로그에서 글을 다시 읽어 커밋한다
+        const source = sourceFor(msg.blog, msg.username.trim());
+        return await record('과거 글 하나', () =>
+          keepAlive(async () => {
+            const result = await publish(msg.id, token, source);
+            // 비공개·임시저장이라 저장하지 않았으면 성공으로 알리지 않는다 (팝업 목록에 남게)
+            if (!result.saved) throw new Error(result.message);
+            return result;
+          }),
+        );
+      } finally {
+        importing = false;
+        await store.remove('importStatus');
+      }
     }
     case 'login': {
       const code = await requestDeviceCode();

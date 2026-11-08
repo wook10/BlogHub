@@ -6,7 +6,15 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <h1>BlogHub</h1>
+  <header class="top">
+    <h1>BlogHub</h1>
+    <button id="settings-btn" aria-label="설정" aria-expanded="false" aria-controls="settings" hidden>
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9.32 5.53 L9.30 2.89 L14.70 2.89 L14.68 5.53 L16.26 6.45 L18.54 5.11 L21.24 9.78 L18.94 11.09 L18.94 12.91 L21.24 14.22 L18.54 18.89 L16.26 17.55 L14.68 18.47 L14.70 21.11 L9.30 21.11 L9.32 18.47 L7.74 17.55 L5.46 18.89 L2.76 14.22 L5.06 12.91 L5.06 11.09 L2.76 9.78 L5.46 5.11 L7.74 6.45 Z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+    </button>
+  </header>
 
   <section id="login" hidden>
     <p>블로그 글을 저장할 GitHub 계정으로 로그인하세요.</p>
@@ -20,6 +28,16 @@
   </section>
 
   <section id="main" hidden>
+    <div id="settings" hidden>
+      <h2 class="first">설정</h2>
+      <label><input type="checkbox" id="auto-save"> 발행하면 바로 GitHub에 저장</label>
+      <p class="hint">끄면 "목록 보고 하나씩"에서 골라 올려요. 블로그에서 지운 글은 저장소에서도 지워요.</p>
+      <label><input type="checkbox" id="save-private"> 비공개 글도 GitHub에 저장</label>
+      <p class="hint">공개 저장소라면 비공개 글이 누구에게나 보여요.</p>
+      <label><input type="checkbox" id="backup-images"> 글 속 이미지도 저장소에 백업</label>
+      <p class="hint">티스토리 이미지는 주소가 매달 바뀌어서 꺼도 저장해요.</p>
+    </div>
+
     <p><b id="user"></b> 로그인됨</p>
     <p>연결된 저장소: <b id="current-repo">없음</b></p>
 
@@ -38,12 +56,6 @@
       <label><input type="checkbox" id="repo-private"> 새 저장소를 비공개로 만들기</label>
     </form>
 
-    <h2>설정</h2>
-    <label><input type="checkbox" id="save-private"> 비공개 글도 GitHub에 저장</label>
-    <p class="hint">공개 저장소라면 비공개 글이 누구에게나 보여요.</p>
-    <label><input type="checkbox" id="backup-images"> 글 속 이미지도 저장소에 백업</label>
-    <p class="hint">티스토리 이미지는 주소가 매달 바뀌어서 꺼도 저장해요.</p>
-
     <h2>과거 글 가져오기</h2>
     <label for="import-user">블로그 아이디</label>
     <div class="row">
@@ -52,9 +64,13 @@
         <option value="tistory">tistory</option>
       </select>
       <input id="import-user" placeholder="velog.io/@아이디">
-      <button id="import-btn">가져오기</button>
+    </div>
+    <div class="row">
+      <button id="import-btn">한 번에 모두</button>
+      <button id="list-btn">목록 보고 하나씩</button>
     </div>
     <p class="hint" id="import-status" role="status">비공개 글은 "비공개 글도 저장"을 켜야 가져와요.</p>
+    <ul id="missing" hidden></ul>
 
     <p id="last-sync">아직 저장한 글이 없어요.</p>
 
