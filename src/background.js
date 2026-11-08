@@ -62,6 +62,7 @@ async function target(token) {
 }
 
 // 글 하나를 커밋할 파일들로 만든다. 이미지를 백업하면 내려받아 링크를 저장소 경로로 바꾼다.
+// 백업을 꺼도 티스토리 서명 주소의 이미지는 저장한다 (서명이 그달 말에 끝나 링크가 깨지므로).
 // oldPath가 있으면 경로가 바뀐 예전 파일을 지우고, deleteDirs로 글에서 빠진 이미지를 정리한다.
 async function postFiles(post, backupImages, oldPath) {
   const date = new Date(post.released_at).toLocaleDateString('sv-SE'); // YYYY-MM-DD, 내 컴퓨터 시간대
@@ -69,18 +70,18 @@ async function postFiles(post, backupImages, oldPath) {
   const files = {};
   const links = new Map();
   let imagesOk = true;
-  if (backupImages) {
-    const dir = imageDir(path);
-    for (const [i, url] of findImages(post.body).entries()) {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(res.status);
-        const file = `${dir}/${imageName(url, i, res.headers.get('content-type') ?? '')}`;
-        files[file] = new Uint8Array(await res.arrayBuffer());
-        links.set(url, relativeLink(path, file));
-      } catch {
-        imagesOk = false; // 못 받은 이미지는 원래 velog 링크를 그대로 둔다
-      }
+  const dir = imageDir(path);
+  // 번호는 글 속 순서 그대로 쓴다 (설정을 바꿔도 같은 이미지가 같은 파일 이름이 되게)
+  for (const [i, url] of findImages(post.body).entries()) {
+    if (!backupImages && !tistory.SIGNED_IMAGE.test(url)) continue;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(res.status);
+      const file = `${dir}/${imageName(url, i, res.headers.get('content-type') ?? '')}`;
+      files[file] = new Uint8Array(await res.arrayBuffer());
+      links.set(url, relativeLink(path, file));
+    } catch {
+      imagesOk = false; // 못 받은 이미지는 원래 블로그 링크를 그대로 둔다
     }
   }
   files[path] = toMarkdown({ ...post, body: replaceImages(post.body, links) }, date);

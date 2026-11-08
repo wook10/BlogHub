@@ -54,6 +54,26 @@ test('htmlToMarkdown: 잘못된 문자 번호와 글자로 쓴 태그', () => {
   assert.equal(htmlToMarkdown('<p>&amp;lt; 와 A&amp;B</p>'), '&amp;lt; 와 A&B');
 });
 
+test('htmlToMarkdown: 서명이 붙은 새 이미지는 /dna/ 주소로 (2026-11-08 실제 글 모양)', () => {
+  const html = '<p>[##_Image|kage@ab/cd/img.png?credential=x&expires=1&signature=y%3D|CDM|1.3|{"filename":"a.png"}_##]</p>';
+  const url = '![](https://blog.kakaocdn.net/dna/ab/cd/img.png?credential=x&expires=1&signature=y%3D)';
+  assert.equal(htmlToMarkdown(html), url);
+  assert.equal(htmlToMarkdown(html.replace(/&/g, '&amp;')), url); // &amp;로 적혀 와도 같은 주소
+  // 표는 HTML 그대로 남는데, 그 안의 이미지 주소도 &amp;로 바뀌지 않아야 백업할 때 받아진다
+  const table = `<table><tbody><tr><td>${html}</td></tr></tbody></table>`;
+  assert.match(htmlToMarkdown(table), /src="https:\/\/blog\.kakaocdn\.net\/dna\/ab\/cd\/img\.png\?credential=x&expires=1&signature=y%3D"/);
+  // 표 안에 직접 들어간 <img>의 &amp; &#38; 도 풀린다 (작은따옴표도)
+  const raw = `<table><tr><td><img src="https://blog.kakaocdn.net/dna/x.png?credential=a&amp;expires=1"><img src='https://blog.kakaocdn.net/dna/y.png?credential=b&#38;expires=2'></td></tr></table>`;
+  assert.match(htmlToMarkdown(raw), /src="https:\/\/blog\.kakaocdn\.net\/dna\/x\.png\?credential=a&expires=1"/);
+  assert.match(htmlToMarkdown(raw), /src='https:\/\/blog\.kakaocdn\.net\/dna\/y\.png\?credential=b&expires=2'/);
+  // 키 속 표기는 한 번만 풀린다 (&amp;lt; → &lt;, 두 번 풀려 < 가 되지 않게)
+  assert.equal(htmlToMarkdown('<p>[##_Image|kage@ab/a&amp;lt;b.png|CDM|1.3|{}_##]</p>'), '![](https://blog.kakaocdn.net/dn/ab/a&lt;b.png)');
+  // 주소 속 " 는 태그를 깨지 않게 %22로
+  assert.equal(htmlToMarkdown('<p>[##_Image|kage@ab/a&quot;b.png|CDM|1.3|{}_##]</p>'), '![](https://blog.kakaocdn.net/dn/ab/a%22b.png)');
+  // 서명 없는 예전 이미지는 /dn/
+  assert.equal(htmlToMarkdown('<p>[##_Image|kage@ab/img.png?original|CDM|1.3|{}_##]</p>'), '![](https://blog.kakaocdn.net/dn/ab/img.png?original)');
+});
+
 test('htmlToMarkdown: 이미지 자리표시자는 카카오 CDN 이미지로', () => {
   const html =
     '<p>[##_Image|kage@abc/img.png|CDM|1.3|{"originWidth":10,"caption":"a|b"}_##]</p>' +

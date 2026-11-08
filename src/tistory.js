@@ -110,10 +110,20 @@ const attr = (attrs, name) => {
 const KAGE = /kage@([^|,\s"]+)/g;
 // 자리표시자 전체에서 이미지를 찾는다 (갤러리는 이미지마다 칸이 따로 있다)
 const PLACEHOLDER = /\[##_(?:Image|ImageGrid|Gallery)\|[\s\S]*?_##\]/g;
+// 요즘 올린 이미지는 서명(?credential=...&signature=...)이 붙어 /dna/ 주소로만 열리고, 예전 이미지는 /dn/ 주소다.
+// 서명은 그달 말까지 유효하고 글을 읽을 때마다 새로 붙는다(2026-11 확인).
+export const SIGNED_IMAGE = /[?&]credential=/;
+const imageUrl = (key) => `https://blog.kakaocdn.net/${SIGNED_IMAGE.test(key) ? 'dna' : 'dn'}/${key}`;
+// 키는 본문에 적힌 그대로 <img src>에 넣는다. &amp; 같은 표기는 태그를 읽을 때(attr) 한 번만 풀린다.
 const placeholders = (html) =>
   html.replace(PLACEHOLDER, (whole) =>
-    [...whole.matchAll(KAGE)].map(([, key]) => `<img src="https://blog.kakaocdn.net/dn/${key}">`).join(''),
+    [...whole.matchAll(KAGE)].map(([, key]) => `<img src="${imageUrl(key).replace(/[<>]/g, encodeURIComponent)}">`).join(''),
   );
+
+// 표는 HTML 그대로 남기므로, 그 안의 이미지 주소만 & 표기(&amp; &#38; &#x26;)를 풀어 백업할 때 제 주소로 받아지게 한다
+const AMP = /&(?:amp|#38|#x26);/gi;
+const unescapeSrc = (tableHtml) =>
+  tableHtml.replace(/(<img\b[^>]*?\ssrc=)(["'])(.*?)\2/gi, (_, before, q, url) => before + q + url.replace(AMP, '&') + q);
 
 // 태그를 나무 모양으로 묶는다. 닫는 태그가 어긋나면 맞는 것까지 닫고, 없는 태그는 무시한다.
 function parse(html) {
@@ -183,7 +193,8 @@ function render(node, html) {
       return href ? `[${inner().trim()}](${href})` : inner();
     }
     case 'img': {
-      const src = attr(attrs, 'src');
+      // 마크다운 링크를 깨는 글자(공백, 따옴표, 괄호)는 주소 표기(%20 등)로
+      const src = attr(attrs, 'src').replace(/[\s"()<>]/g, encodeURIComponent);
       return src ? `![${attr(attrs, 'alt')}](${src})` : '';
     }
     case 'pre': {
@@ -205,7 +216,7 @@ function render(node, html) {
       return `\n\n${items.join('\n')}\n\n`;
     }
     case 'table':
-      return node.end ? block(html.slice(node.start, node.end)) : inner();
+      return node.end ? block(unescapeSrc(html.slice(node.start, node.end))) : inner();
     case 'script':
     case 'style':
       return '';
