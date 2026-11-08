@@ -2,7 +2,7 @@
 
 <h1 align="center">VelogHub</h1>
 
-<p align="center">velog에 글을 출간하는 순간, GitHub 저장소에 자동으로 커밋해 주는 크롬 확장 프로그램</p>
+<p align="center">velog에 글을 출간하는 순간, GitHub 저장소에 자동으로 커밋해 주는 크롬·엣지 확장 프로그램</p>
 
 백준허브가 알고리즘 풀이를 GitHub에 올려 주듯, VelogHub는 블로그 글을 GitHub에 올려 줍니다.
 블로그 활동이 GitHub 잔디로 이어지고, 직접 쓴 원본 마크다운이 내 저장소에 그대로 남습니다.
@@ -21,11 +21,19 @@
 
 ## 설치
 
-크롬 웹스토어 등록 전이라 지금은 직접 불러와야 합니다.
+### Edge 추가 기능 스토어
+
+[Edge 스토어에서 설치](https://microsoftedge.microsoft.com/addons/detail/fjknniibbbgfommmdfmdaaanfkckbnjp) → **받기** → **확장 추가**
+
+지금은 심사 중이라 링크가 열리지 않을 수 있습니다. 그럴 땐 아래처럼 직접 불러오세요.
+
+### 직접 불러오기 (크롬·엣지)
 
 1. 이 저장소를 내려받습니다. (`Code` → `Download ZIP` 후 압축 풀기, 또는 `git clone`)
-2. 크롬에서 `chrome://extensions`를 열고 오른쪽 위 **개발자 모드**를 켭니다.
-3. **압축해제된 확장 프로그램 로드**를 누르고 내려받은 폴더를 고릅니다.
+2. 크롬은 `chrome://extensions`, 엣지는 `edge://extensions`를 열고 **개발자 모드**를 켭니다.
+3. **압축해제된 확장 프로그램 로드**를 누르고 `manifest.json`이 들어 있는 폴더를 고릅니다.
+
+직접 불러온 확장은 자동으로 업데이트되지 않습니다. 새 버전은 `git pull`(또는 ZIP을 다시 받기)한 뒤 확장 페이지에서 VelogHub의 새로고침(↻)을 누르세요. 불러온 폴더를 지우거나 옮기면 확장도 사라집니다.
 
 ## 사용법
 
@@ -79,7 +87,7 @@ velog_url: https://velog.io/@아이디/useState-정리
    - Homepage URL, Callback URL은 아무 주소나 넣어도 됩니다. (Device Flow에서는 쓰지 않음)
    - **Enable Device Flow**는 켜고, **Expire user access tokens**는 끕니다. (토큰을 새로 받으려면 비밀키가 필요해서)
 2. 받은 Client ID를 `src/config.js`의 `CLIENT_ID`에 넣습니다.
-3. 위 [설치](#설치) 방법으로 불러옵니다.
+3. 위 [직접 불러오기](#직접-불러오기-크롬엣지) 방법으로 불러옵니다.
 
 ```
 manifest.json      확장 설정 (Manifest V3)
