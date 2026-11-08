@@ -90,7 +90,8 @@ src/markdown.js    front matter를 붙인 마크다운, 파일·이미지 경로
 src/velog.js       과거 글 전체 불러오기 (velog GraphQL)
 src/config.js      OAuth Client ID
 popup/             확장 팝업 화면
-icons/             아이콘 (icon.svg가 원본)
+icons/             아이콘 (icon.svg가 원본, PNG는 npm run icons로 다시 만듦)
+scripts/icons.mjs  icon.svg로 PNG 아이콘을 만드는 스크립트 (크롬 필요)
 ```
 
 테스트는 `npm test`로 실행합니다. (Node 20 이상, 설치할 패키지 없음)
