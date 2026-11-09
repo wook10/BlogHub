@@ -12,6 +12,7 @@ async function send(msg) {
 }
 
 let reposLoaded = false;
+let connectedRepo = null; // 저장해 둔 연결 저장소 (연결 버튼 글자에 쓴다)
 let listing = false; // 목록을 불러오는 중
 let pendingImports = 0; // 차례를 기다리거나 가져오는 중인 글 수 (그동안 목록을 새로 만들지 않게)
 let queue = Promise.resolve(); // 고른 글을 차례대로 가져온다 (여러 개를 빠르게 눌러도 하나씩)
@@ -55,6 +56,8 @@ async function render() {
       const repos = await send({ type: 'repos' }).catch(() => []);
       $('repo-select').replaceChildren(...repos.map((name) => new Option(name, name, false, name === repo)));
     }
+    connectedRepo = repo ?? null;
+    showConnected();
   }
 }
 
@@ -66,24 +69,40 @@ $('open-btn').onclick = async () => {
   chrome.tabs.create({ url: pending.verificationUri });
 };
 
+// 버튼 글자로 진행 상황을 보여 준다 ("연결 중…"). 끝나면 원래 글자로 돌리고 상태에 맞게 다시 그린다.
+async function withProgress(btn, busy, task) {
+  const label = btn.textContent;
+  btn.disabled = true; // 두 번 눌러 같은 일을 두 번 하지 않게
+  btn.textContent = busy;
+  await task().catch(() => {});
+  btn.textContent = label;
+  btn.disabled = false;
+  showConnected();
+}
+
+// 지금 연결된 저장소를 고르고 있으면 버튼에 "연결됨"을 계속 보여 준다
+function showConnected() {
+  const connected = !!connectedRepo && $('repo-select').value === connectedRepo;
+  $('select-btn').textContent = connected ? '연결됨' : '연결';
+  $('select-btn').disabled = connected;
+}
+$('repo-select').onchange = showConnected;
+
 $('select-btn').onclick = () => {
   const repo = $('repo-select').value;
-  if (repo) send({ type: 'selectRepo', repo }).catch(() => {});
+  if (repo) withProgress($('select-btn'), '연결 중…', () => send({ type: 'selectRepo', repo }));
 };
 
 $('create-form').onsubmit = async (e) => {
   e.preventDefault();
-  const btn = e.submitter;
-  btn.disabled = true; // 두 번 눌러 같은 저장소를 두 번 만들지 않게
-  const name = await send({
-    type: 'createRepo',
-    name: $('repo-name').value.trim(),
-    isPrivate: $('repo-private').checked,
-  }).catch(() => null);
-  btn.disabled = false;
+  let name;
+  await withProgress(e.submitter, '만드는 중…', async () => {
+    name = await send({ type: 'createRepo', name: $('repo-name').value.trim(), isPrivate: $('repo-private').checked });
+  });
   if (name) {
     $('repo-select').prepend(new Option(name, name, true, true));
     $('repo-name').value = '';
+    showConnected();
   }
 };
 
