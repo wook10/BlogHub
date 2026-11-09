@@ -24,7 +24,6 @@
 ## 설치
 
 **Edge 스토어:** [BlogHub 설치](https://microsoftedge.microsoft.com/addons/detail/fjknniibbbgfommmdfmdaaanfkckbnjp) → **받기** → **확장 추가**
-(지금 스토어 버전은 velog만 지원합니다. 티스토리는 다음 버전 심사가 끝나면 지원됩니다.)
 
 **직접 불러오기 (크롬·엣지):**
 
