@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toMarkdown, filePath } from '../src/markdown.js';
+import { toMarkdown, filePath, indexPostFiles, candidateFiles, sourceLine } from '../src/markdown.js';
 
 const post = {
   title: 'React: "상태" 관리',
@@ -76,4 +76,31 @@ test('티스토리 글은 tistory_url을 남긴다', () => {
   const md = toMarkdown({ ...post, series: null, source: 'tistory', url: 'https://me.tistory.com/1' }, '2026-11-08');
   assert.match(md, /^tistory_url: https:\/\/me\.tistory\.com\/1$/m);
   assert.doesNotMatch(md, /velog_url/);
+});
+
+test('저장소 파일 이름으로 이 글일 수 있는 파일을 고른다', () => {
+  const f = (path) => ({ path, sha: path });
+  const index = indexPostFiles([
+    f('README.md'),
+    f('posts/2026-11-08-hello-world.md'),
+    f('posts/리액트/2026-11-01-c--tips-abcdef12.md'),
+    f('posts/2026-11-09-my-post-345.md'),
+    f('posts/2026-11-09-top-10.md'),
+    f('posts/images/2026-11-08-hello-world/1.png'),
+  ]);
+  const paths = (q) => candidateFiles(index, q).map((x) => x.path);
+  // velog: 글 주소로 파일 이름을 만들어 본다 (시리즈 폴더, 바뀐 문자 포함)
+  assert.deepEqual(paths({ id: 'x', slug: 'hello-world' }), ['posts/2026-11-08-hello-world.md']);
+  assert.deepEqual(paths({ id: 'abcdef1234', slug: 'c#-tips' }), ['posts/리액트/2026-11-01-c--tips-abcdef12.md']);
+  assert.deepEqual(paths({ id: 'y', slug: 'hello' }), []);
+  // 티스토리: 이름 끝 번호. velog의 top-10도 후보는 되지만 파일 속 글 주소로 걸러진다.
+  assert.deepEqual(paths({ id: '345' }), ['posts/2026-11-09-my-post-345.md']);
+  assert.deepEqual(paths({ id: '10' }), ['posts/2026-11-09-top-10.md']);
+  assert.deepEqual(paths({ id: '45' }), []);
+});
+
+test('글 주소 줄은 파일에 적는 줄과 같다', () => {
+  const t = { ...post, series: null, source: 'tistory', url: 'https://me.tistory.com/1' };
+  assert.ok(toMarkdown(t, '2026-11-08').split('\n').includes(sourceLine(t)));
+  assert.ok(toMarkdown(post, '2026-11-08').split('\n').includes(sourceLine(post)));
 });

@@ -1,6 +1,12 @@
 // JSON 문자열은 그대로 YAML의 큰따옴표 문자열이 된다 (콜론, 따옴표가 든 제목도 안전).
 const yaml = (value) => JSON.stringify(value);
 
+// 글 주소 줄. 저장소의 파일이 어느 블로그의 어느 글인지 알아볼 때도 쓴다.
+export const sourceLine = (post) =>
+  post.source === 'tistory'
+    ? `tistory_url: ${post.url}`
+    : `velog_url: https://velog.io/@${post.username}/${encodeURIComponent(post.url_slug)}`;
+
 export function toMarkdown(post, date) {
   return [
     '---',
@@ -8,9 +14,7 @@ export function toMarkdown(post, date) {
     `date: ${date}`,
     `tags: ${yaml(post.tags)}`,
     ...(post.series ? [`series: ${yaml(post.series)}`] : []),
-    post.source === 'tistory'
-      ? `tistory_url: ${post.url}`
-      : `velog_url: https://velog.io/@${post.username}/${encodeURIComponent(post.url_slug)}`,
+    sourceLine(post),
     '---',
     '',
     post.body,
@@ -53,8 +57,33 @@ const clean = (s) => s.replace(/[\\/:*?"<>|#%\x00-\x1f]+/g, '-').trim().replace(
 // 시리즈에 속한 글은 posts/시리즈명/ 폴더에 둔다.
 export function filePath(post, date) {
   const dir = post.series ? `posts/${clean(post.series)}` : 'posts';
+  return `${dir}/${date}-${fileSlug(post)}.md`;
+}
+
+// 파일 이름에서 날짜와 .md를 뺀 부분
+function fileSlug(post) {
   const name = clean(post.url_slug).replace(/\s+/g, '-');
   // 문자를 바꿨으면 다른 글(c#-tips와 c%-tips)과 이름이 겹칠 수 있어 글 id 앞부분을 붙인다
-  const unique = name === post.url_slug ? name : `${name}-${post.id.slice(0, 8)}`;
-  return `${dir}/${date}-${unique}.md`;
+  return name === post.url_slug ? name : `${name}-${post.id.slice(0, 8)}`;
 }
+
+// 저장소의 글 파일({ path, sha })을 이름으로 찾기 쉽게 묶는다.
+// bySlug: 날짜와 .md를 뺀 이름 → 파일들 (velog), byNumber: 이름 끝의 숫자 → 파일들 (티스토리 글 번호)
+export function indexPostFiles(files) {
+  const bySlug = new Map();
+  const byNumber = new Map();
+  const add = (map, key, file) => map.set(key, [...(map.get(key) ?? []), file]);
+  for (const file of files) {
+    if (!/^posts\/.*\.md$/.test(file.path)) continue;
+    const name = file.path.split('/').pop().replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '');
+    add(bySlug, name, file);
+    // 티스토리 파일 이름은 "주소-번호" 또는 "주소-번호-번호앞8자리"
+    const [, a, b] = name.match(/(?:-(\d+))?-(\d+)$/) ?? [];
+    for (const n of new Set([a, b].filter(Boolean))) add(byNumber, n, file);
+  }
+  return { bySlug, byNumber };
+}
+
+// 이 글일 수 있는 파일들. 이름만으로는 확실하지 않아(다른 블로그의 같은 번호 등) 파일 속 글 주소(sourceLine)로 확인해야 한다.
+export const candidateFiles = ({ bySlug, byNumber }, { id, slug }) =>
+  (slug ? bySlug.get(fileSlug({ id, url_slug: slug })) : byNumber.get(id)) ?? [];

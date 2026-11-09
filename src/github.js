@@ -165,6 +165,19 @@ export async function commitFiles(token, repo, { files, deleteDirs = [], message
   }
 }
 
+// 기본 브랜치(HEAD)의 파일 전체 [{ path, sha }].
+// shortcut: 파일이 10만 개를 넘어 목록이 잘리면 일부만 본다, 그런 저장소가 생기면 폴더별로 나눠 읽자.
+export async function listFiles(token, repo) {
+  const tree = await api(token, `/repos/${repo}/git/trees/HEAD?recursive=1`);
+  return tree.tree.filter((e) => e.type === 'blob').map(({ path, sha }) => ({ path, sha }));
+}
+
+// 파일 내용 (UTF-8 글자)
+export async function readBlob(token, repo, sha) {
+  const { content } = await api(token, `/repos/${repo}/git/blobs/${sha}`);
+  return new TextDecoder().decode(Uint8Array.from(atob(content.replace(/\n/g, '')), (c) => c.charCodeAt(0)));
+}
+
 export const getUser = (token) => api(token, '/user');
 
 // shortcut: 최근 수정된 내 저장소 100개만 보여 줌, 더 필요하면 페이지네이션 추가

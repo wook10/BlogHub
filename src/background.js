@@ -1,5 +1,8 @@
-import { requestDeviceCode, pollToken, getUser, listRepos, createRepo, commitFiles } from './github.js';
-import { toMarkdown, filePath, findImages, replaceImages, imageDir, imageName, relativeLink } from './markdown.js';
+import { requestDeviceCode, pollToken, getUser, listRepos, createRepo, commitFiles, listFiles, readBlob } from './github.js';
+import {
+  toMarkdown, filePath, findImages, replaceImages, imageDir, imageName, relativeLink,
+  sourceLine, indexPostFiles, candidateFiles,
+} from './markdown.js';
 import { fetchPost, fetchAllPosts, normalize } from './velog.js';
 import * as tistory from './tistory.js';
 
@@ -181,8 +184,14 @@ const sourceFor = (blog, username) => (blog === 'tistory' ? tistorySource(tistor
 async function postList(blog, username, onPage) {
   const source = sourceFor(blog, username);
   if (blog === 'tistory') {
-    const items = await tistory.listPosts(tistory.originOf(username), onPage);
-    return { source, items, load: (item) => source.fetchPost(item.id), brief: (item) => ({ ...item, isTemp: false }) };
+    const origin = tistory.originOf(username);
+    const items = await tistory.listPosts(origin, onPage);
+    return {
+      source,
+      items,
+      load: (item) => source.fetchPost(item.id),
+      brief: (item) => ({ ...item, isTemp: false, line: sourceLine({ source: 'tistory', url: `${origin}/${item.id}` }) }),
+    };
   }
   return {
     source,
@@ -192,7 +201,7 @@ async function postList(blog, username, onPage) {
     brief: (item) => {
       try {
         const p = normalize(item);
-        return { id: p.id, title: p.title, isPrivate: p.is_private, isTemp: p.is_temp };
+        return { id: p.id, slug: p.url_slug, line: sourceLine(p), title: p.title, isPrivate: p.is_private, isTemp: p.is_temp };
       } catch {
         return null;
       }
@@ -202,12 +211,38 @@ async function postList(blog, username, onPage) {
 
 // 저장소에 아직 없는 과거 글 목록 (팝업에서 하나씩 골라 가져오기)
 async function missingPosts(blog, username, token) {
-  const { pathOf, savePrivate } = await target(token);
+  const { repo, pathOf, remember, savePrivate } = await target(token);
   const { source, items, brief } = await postList(blog, username);
-  // 저장되지 않을 글(임시저장, 비공개인데 설정이 꺼짐)은 목록에 보이지 않게 한다
-  return items
+  // 저장되지 않을 글(임시저장, 비공개인데 설정이 꺼짐)과 이 브라우저가 저장한 글은 목록에 보이지 않게 한다
+  const posts = items
     .map(brief)
     .filter((p) => p && !p.isTemp && (savePrivate || !p.isPrivate) && !pathOf(source.key(String(p.id))));
+  // 다른 브라우저에서 저장한 글도 뺀다. 찾은 경로는 기록해 둬서 나중에 수정·삭제할 때 같은 파일을 쓴다.
+  const found = await findSaved(token, repo, posts);
+  await remember(Object.fromEntries(Object.entries(found).map(([id, path]) => [source.key(id), path])));
+  return posts.filter((p) => !found[p.id]);
+}
+
+// 이 브라우저에 기록은 없지만 저장소에 이미 파일이 있는 글 { 글 id: 경로 }.
+// 파일 이름으로 후보를 고르고, 파일 속 글 주소 줄이 같은지 확인한다 (다른 블로그의 같은 번호 글과 헷갈리지 않게).
+async function findSaved(token, repo, posts) {
+  const files = await listFiles(token, repo).catch((e) => {
+    console.warn('[BlogHub] 저장소 파일 목록을 못 읽어 이 브라우저 기록만 봐요', e);
+    return []; // 빈 저장소(409) 등. 다시 가져와도 내용이 같으면 커밋이 생기지 않는다.
+  });
+  const index = indexPostFiles(files);
+  const checks = posts.flatMap((p) => candidateFiles(index, { id: String(p.id), slug: p.slug }).map((file) => ({ p, file })));
+  const found = {};
+  for (let i = 0; i < checks.length; i += 10) {
+    // GitHub에 한꺼번에 너무 많이 요청하지 않게 10개씩
+    await Promise.all(
+      checks.slice(i, i + 10).map(async ({ p, file }) => {
+        const text = await readBlob(token, repo, file.sha).catch(() => '');
+        if (text.split('\n').includes(p.line)) found[String(p.id)] = file.path;
+      }),
+    );
+  }
+  return found;
 }
 
 // 블로그에 쓴 글 전체를 가져온다
