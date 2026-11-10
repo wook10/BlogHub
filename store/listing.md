@@ -80,7 +80,7 @@ GitHub
 | --- | --- |
 | Store logo (300×300) | `store/logo-300.png` |
 | Small promotional tile (440×280) | `store/promo-440x280.png` |
-| Screenshots (1280×800) | `store/screenshot-1.png`, `store/screenshot-2.png` |
+| Screenshots (1280×800) | `store/screenshot-1.png`, `store/screenshot-2.png`, `store/screenshot-3.png` |
 
 ## Notes for certification (심사 담당자에게, 영어)
 
