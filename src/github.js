@@ -187,5 +187,5 @@ export const listRepos = (token) => api(token, '/user/repos?affiliation=owner&so
 export const createRepo = (token, name, isPrivate) =>
   api(token, '/user/repos', {
     method: 'POST',
-    body: { name, private: isPrivate, auto_init: true, description: '블로그 글 백업 (BlogHub)' },
+    body: { name, private: isPrivate, auto_init: true, description: '블로그 글 (BlogHub)' },
   });

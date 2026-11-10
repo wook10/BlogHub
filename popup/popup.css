@@ -9,6 +9,7 @@
   --grass-bg: #dafbe1;
   --danger: #d1242f;
   --focus: #0969da;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%2359636e' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -22,6 +23,7 @@
     --grass-bg: #12261e;
     --danger: #f85149;
     --focus: #4493f8;
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%239198a1' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     color-scheme: dark;
   }
 }
@@ -59,7 +61,17 @@ input[type="checkbox"] { margin: 0; accent-color: var(--grass); }
   font: inherit;
   color: var(--ink);
 }
-:where(select, input:not([type="checkbox"])) { background: var(--field); }
+:where(input:not([type="checkbox"])) { background: var(--field); }
+/* 기본 화살표는 오른쪽 끝에 붙어 있어서 직접 그려 안쪽으로 띄운다 */
+:where(select) {
+  appearance: none;
+  padding-right: 30px;
+  background: var(--field) var(--chevron) no-repeat right 10px center / 12px;
+}
+/* 고대비 모드는 배경 그림을 숨기므로 기본 화살표로 돌린다 */
+@media (forced-colors: active) {
+  :where(select) { appearance: auto; padding-right: 10px; }
+}
 input::placeholder { color: var(--muted); }
 :where(button:not(.link, #settings-btn)) { background: var(--paper); font-weight: 600; cursor: pointer; white-space: nowrap; }
 :where(button:not(.link, #settings-btn)):hover:not(:disabled) { background: var(--field); }

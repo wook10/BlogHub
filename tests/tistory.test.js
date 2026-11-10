@@ -97,6 +97,7 @@ test('listPosts: 여러 쪽의 글 번호·제목을 모으고, 로그인 화면
   const pages = { 1: [{ id: 3, title: 'c', visibility: 20 }, { id: 2, title: 'b', visibility: 0 }], 2: [{ id: 1, title: 'a', visibility: 20 }] };
   globalThis.fetch = async (url) => ({
     ok: true,
+    url,
     json: async () => ({ totalCount: 3, items: pages[new URL(url).searchParams.get('page')] ?? [] }),
   });
   assert.deepEqual(await listPosts(origin), [
@@ -105,12 +106,25 @@ test('listPosts: 여러 쪽의 글 번호·제목을 모으고, 로그인 화면
     { id: '1', title: 'a', isPrivate: false },
   ]);
 
-  globalThis.fetch = async () => ({ ok: true, json: async () => { throw new SyntaxError('<html>'); } });
+  globalThis.fetch = async (url) => ({ ok: true, url, json: async () => { throw new SyntaxError('<html>'); } });
   await assert.rejects(listPosts(origin), /로그인/);
+
+  // 로그인 화면으로 넘어감, 없는 블로그
+  globalThis.fetch = async () => ({ ok: true, url: 'https://www.tistory.com/auth/login?redirectUrl=x' });
+  await assert.rejects(listPosts(origin), /로그인한 뒤/);
+  globalThis.fetch = async (url) => ({ ok: false, status: 404, url });
+  await assert.rejects(listPosts(origin), /me\.tistory\.com 블로그를 찾지 못했어요/);
+  globalThis.fetch = async (url) => ({ ok: false, status: 403, url });
+  await assert.rejects(listPosts(origin), /내 블로그가 아니에요/);
+  // 연결 오류는 "블로그 없음"으로 착각하게 하지 않는다
+  globalThis.fetch = async () => { throw new TypeError('Failed to fetch'); };
+  await assert.rejects(listPosts(origin), /연결하지 못했어요/);
 });
 
 test('originOf: 블로그 아이디로 주소, 이상한 아이디는 오류', () => {
   assert.equal(originOf(' Me '), origin);
+  assert.equal(originOf('https://me.tistory.com/manage'), origin);
+  assert.equal(originOf('me.tistory.com'), origin);
   assert.throws(() => originOf('me.evil.com/x'));
   assert.throws(() => originOf('www'));
 });

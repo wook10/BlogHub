@@ -179,7 +179,7 @@ function item(text, button) {
 
 // 고른 블로그에 맞게 어떤 아이디를 넣는지 보여 준다
 function showPlaceholder() {
-  $('import-user').placeholder = $('import-blog').value === 'tistory' ? '아이디.tistory.com의 아이디' : 'velog.io/@아이디';
+  $('import-user').placeholder = $('import-blog').value === 'tistory' ? '아이디 또는 아이디.tistory.com' : 'velog.io/@아이디';
 }
 $('import-blog').onchange = showPlaceholder;
 

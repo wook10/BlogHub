@@ -12,8 +12,11 @@ export function blogOrigin(url) {
   return origin;
 }
 
-// 블로그 아이디(아이디.tistory.com의 아이디)로 블로그 주소
-export const originOf = (id) => blogOrigin(`https://${String(id).trim().toLowerCase()}.tistory.com/`);
+// 블로그 아이디(아이디.tistory.com의 아이디)로 블로그 주소. 주소 전체(https://아이디.tistory.com/...)를 넣어도 된다.
+export const originOf = (id) => {
+  const name = String(id).trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0].replace(/\.tistory\.com$/, '');
+  return blogOrigin(`https://${name}.tistory.com/`);
+};
 
 // 과거 글 가져오기: 글 관리 목록(/manage/posts.json)에서 글 번호와 제목을 모두 모은다 (최신 글부터).
 // 관리 화면이라 블로그 주인으로 로그인돼 있어야 한다. 비공개 글도 들어 있다.
@@ -21,7 +24,13 @@ export async function listPosts(origin, onPage) {
   const posts = new Map();
   for (let page = 1; page <= 1000; page++) {
     const query = `category=-3&page=${page}&searchKeyword=&searchType=title&visibility=all`; // 관리 화면이 쓰는 값 그대로
-    const res = await fetch(`${origin}/manage/posts.json?${query}`, { credentials: 'include' });
+    const res = await fetch(`${origin}/manage/posts.json?${query}`, { credentials: 'include' }).catch(() => {
+      throw new Error('티스토리에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.');
+    });
+    // 없는 블로그(404), 로그인 안 됨(로그인 화면으로 넘어감), 남의 블로그(403)를 따로 알려 준다 (어느 쪽인지 알아야 고칠 수 있다)
+    if (res.status === 404) throw new Error(`${new URL(origin).host} 블로그를 찾지 못했어요. 블로그 주소를 확인해 주세요.`);
+    if (new URL(res.url).origin !== origin) throw new Error('이 브라우저에서 티스토리에 로그인한 뒤 다시 해 주세요.');
+    if (res.status === 403) throw new Error('내 블로그가 아니에요. 이 블로그 주인 계정으로 티스토리에 로그인해 주세요.');
     if (!res.ok) throw new Error(`티스토리 서버 오류 (${res.status})`);
     const data = await res.json().catch(() => null); // 로그인 화면(HTML)으로 넘어가면 JSON이 아니다
     if (!Array.isArray(data?.items)) {
