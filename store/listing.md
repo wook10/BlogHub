@@ -43,8 +43,9 @@ BlogHub는 velog나 티스토리에 글을 발행하는 순간, 그 글을 내 G
 - 마크다운으로 저장: velog는 직접 쓴 마크다운 그대로, 티스토리는 HTML을 마크다운으로 바꿔 제목, 날짜, 태그, 글 주소와 함께 저장합니다.
 - 수정·삭제 반영: 글을 고치면 같은 파일을 업데이트하고, 블로그에서 지우면 저장소에서도 지웁니다.
 - 이미지 백업: 글에 들어간 블로그 이미지를 저장소에 함께 저장하고 링크를 저장소 경로로 바꿉니다.
-- 시리즈별 폴더 (velog): 시리즈에 속한 글은 posts/시리즈명/ 폴더에 정리됩니다.
-- 과거 글 가져오기: velog 아이디나 내 티스토리 블로그 아이디를 넣으면 지금까지 쓴 글을 한 번에 저장소로 가져옵니다.
+- 저장 폴더: 저장소에 있는 폴더를 고르거나 새로 만들 수 있습니다. 그 안에서 velog 글은 시리즈별, 티스토리 글은 카테고리별 폴더로 정리됩니다.
+- 과거 글 가져오기: velog 아이디나 내 티스토리 블로그 아이디를 넣으면 지금까지 쓴 글을 한 번에, 또는 목록에서 골라 하나씩 저장소로 가져옵니다.
+- 말투 바꿔 가져오기 (선택): 과거 글을 1인칭, 3인칭, 내 말투로 바꿔 저장합니다. 사용자 본인의 Anthropic API 키가 필요합니다.
 - 비공개 글 선택: 비공개 글은 기본으로 저장하지 않고, 설정에서 켤 수 있습니다.
 
 ■ 사용 방법
@@ -55,6 +56,7 @@ BlogHub는 velog나 티스토리에 글을 발행하는 순간, 그 글을 내 G
 
 ■ 개인정보
 BlogHub는 별도 서버가 없습니다. GitHub 토큰은 브라우저 안에만 저장되고, 글은 GitHub와 velog·티스토리 사이에서만 오갑니다.
+단, 말투 바꾸기를 직접 켜고 API 키를 넣은 경우에만 가져오는 글의 본문이 Anthropic(Claude)으로 전송됩니다.
 광고, 분석, 추적 코드를 쓰지 않습니다.
 
 BlogHub는 velog나 티스토리의 공식 확장이 아닙니다. 소스 코드: https://github.com/wook10/BlogHub
@@ -83,26 +85,29 @@ GitHub
 ## Notes for certification (심사 담당자에게, 영어)
 
 ```
-BlogHub saves posts that the user publishes on velog (https://velog.io) or Tistory (https://www.tistory.com), two Korean blog services, to a GitHub repository the user chooses.
+BlogHub saves posts that the user publishes on velog (https://velog.io) or Tistory (https://www.tistory.com), two Korean blog services, to the user's GitHub repository.
 
 How to test:
-1. Click the toolbar icon and press "GitHub로 로그인" (Sign in with GitHub). A device code appears; enter it at https://github.com/login/device and approve. (GitHub OAuth Device Flow; no client secret is shipped).
-2. In the popup, create or pick a repository.
-3. Sign in to velog.io (any GitHub/Google account works), write a post and press "출간하기" (Publish).
-4. A green "GitHub에 저장됨" (Saved to GitHub) toast appears and the post is committed to posts/<date>-<slug>.md.
-Optional: "과거 글 가져오기" (Import past posts) in the popup imports all posts of a velog username, or of the user's own Tistory blog.
-Tistory: sign in to tistory.com, open the blog's admin (https://<blog>.tistory.com/manage/newpost), publish a post (private is fine), then edit or delete it in the admin. Each action is committed to the repository as "[tistory] ...".
+1. Click the toolbar icon and press "GitHub로 로그인" (Sign in with GitHub). A device code appears; enter it at https://github.com/login/device and approve (Device Flow).
+2. In the popup, create or pick a repository and a folder.
+3. Sign in to velog.io, write a post and press "출간하기" (Publish).
+4. A green "GitHub에 저장됨" (Saved to GitHub) toast appears and the post is committed to the chosen folder.
+Optional: "과거 글 가져오기" (Import past posts) imports posts of a velog username or the user's own Tistory blog.
+Tistory: sign in to tistory.com, publish a post in the blog admin (https://<blog>.tistory.com/manage/newpost), then edit or delete it. Each action is committed as "[tistory] ...".
+
+Optional tone setting (off by default, gear icon): the user can pick a tone for imported past posts and enter their own Anthropic API key. Only then is the text of imported posts sent to api.anthropic.com to rewrite its tone.
 
 Permissions:
-- storage: keeps the GitHub token, selected repository, settings and file paths locally.
-- offscreen: a hidden page converts Tistory post HTML to Markdown locally with the bundled turndown library.
-- Content scripts on velog.io: detect publish/edit/delete on velog. Only the post id is read; content is fetched again from velog's API.
-- github.com / api.github.com: GitHub sign-in (Device Flow) and committing files.
-- *.tistory.com: content scripts in the blog admin (/manage/*) detect publish/edit/delete (only the post number is read); the post is then read again from the admin's edit page with the user's own login.
-- v2.velog.io: read the published post and the user's post list from velog's GraphQL API.
-- velog.velcdn.com / images.velog.io / blog.kakaocdn.net: download post images to back them up.
+- storage: GitHub token, repository, settings, file paths (local only).
+- offscreen: hidden page converts Tistory HTML to Markdown locally with the bundled turndown library.
+- velog.io: content scripts detect publish/edit/delete; only the post id is read, content is fetched again from velog's API.
+- github.com / api.github.com: sign-in and commits.
+- *.tistory.com: content scripts in the blog admin (/manage/*) detect publish/edit/delete; the post is read again from the admin edit page with the user's own login.
+- v2.velog.io: read posts from velog's GraphQL API.
+- velog.velcdn.com / images.velog.io / blog.kakaocdn.net: post images for backup.
+- api.anthropic.com: only the optional tone rewrite above.
 
-The extension has no backend server and sends no data anywhere other than GitHub, velog and Tistory. No remote code is loaded.
+No backend server. Apart from the optional tone setting, no data is sent anywhere other than GitHub, velog and Tistory. No remote code is loaded.
 ```
 
 ## Availability
