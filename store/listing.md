@@ -45,7 +45,7 @@ BlogHub는 velog나 티스토리에 글을 발행하는 순간, 그 글을 내 G
 - 이미지 백업: 글에 들어간 블로그 이미지를 저장소에 함께 저장하고 링크를 저장소 경로로 바꿉니다.
 - 저장 폴더: 저장소에 있는 폴더를 고르거나 새로 만들 수 있습니다. 그 안에서 velog 글은 시리즈별, 티스토리 글은 카테고리별 폴더로 정리됩니다.
 - 과거 글 가져오기: velog 아이디나 내 티스토리 블로그 아이디를 넣으면 지금까지 쓴 글을 한 번에, 또는 목록에서 골라 하나씩 저장소로 가져옵니다.
-- 말투 바꿔 가져오기 (선택): 과거 글을 1인칭, 3인칭, 내 말투로 바꿔 저장합니다. 사용자 본인의 Anthropic API 키가 필요합니다.
+- 말투 바꿔 가져오기 (선택): 과거 글을 1인칭, 3인칭, 내 말투로 바꿔 저장합니다. 사용자 본인의 무료 Gemini API 키가 필요합니다. 비공개 글은 보내지 않습니다.
 - 비공개 글 선택: 비공개 글은 기본으로 저장하지 않고, 설정에서 켤 수 있습니다.
 
 ■ 사용 방법
@@ -56,7 +56,7 @@ BlogHub는 velog나 티스토리에 글을 발행하는 순간, 그 글을 내 G
 
 ■ 개인정보
 BlogHub는 별도 서버가 없습니다. GitHub 토큰은 브라우저 안에만 저장되고, 글은 GitHub와 velog·티스토리 사이에서만 오갑니다.
-단, 말투 바꾸기를 직접 켜고 API 키를 넣은 경우에만 가져오는 글의 본문이 Anthropic(Claude)으로 전송됩니다.
+단, 말투 바꾸기를 직접 켜고 API 키를 넣은 경우에만 가져오는 공개 글의 본문이 구글 Gemini로 전송됩니다 (무료 구간에 보낸 글은 구글이 서비스 개선에 쓸 수 있습니다).
 광고, 분석, 추적 코드를 쓰지 않습니다.
 
 BlogHub는 velog나 티스토리의 공식 확장이 아닙니다. 소스 코드: https://github.com/wook10/BlogHub
@@ -91,21 +91,21 @@ How to test:
 1. Click the toolbar icon and press "GitHub로 로그인" (Sign in with GitHub). A device code appears; enter it at https://github.com/login/device and approve (Device Flow).
 2. In the popup, create or pick a repository and a folder.
 3. Sign in to velog.io, write a post and press "출간하기" (Publish).
-4. A green "GitHub에 저장됨" (Saved to GitHub) toast appears and the post is committed to the chosen folder.
-Optional: "과거 글 가져오기" (Import past posts) imports posts of a velog username or the user's own Tistory blog.
+4. A "GitHub에 저장됨" (Saved) toast appears and the post is committed to the chosen folder.
+Optional: import past posts from the popup.
 Tistory: sign in to tistory.com, publish a post in the blog admin (https://<blog>.tistory.com/manage/newpost), then edit or delete it. Each action is committed as "[tistory] ...".
 
-Optional tone setting (off by default, gear icon): the user can pick a tone for imported past posts and enter their own Anthropic API key. Only then is the text of imported posts sent to api.anthropic.com to rewrite its tone.
+Optional tone setting (off by default, gear icon): the user can pick a tone for imported past posts and enter their own Gemini API key. Only then is the text of imported public posts sent to generativelanguage.googleapis.com to rewrite its tone. Private posts are never sent.
 
 Permissions:
 - storage: GitHub token, repository, settings, file paths (local only).
 - offscreen: hidden page converts Tistory HTML to Markdown locally with the bundled turndown library.
-- velog.io: content scripts detect publish/edit/delete; only the post id is read, content is fetched again from velog's API.
+- velog.io: content scripts detect publish/edit/delete (only the post id is read); content is fetched from velog's API.
 - github.com / api.github.com: sign-in and commits.
-- *.tistory.com: content scripts in the blog admin (/manage/*) detect publish/edit/delete; the post is read again from the admin edit page with the user's own login.
+- *.tistory.com: content scripts in the blog admin (/manage/*) detect publish/edit/delete; the post is re-read from the admin edit page with the user's login.
 - v2.velog.io: read posts from velog's GraphQL API.
 - velog.velcdn.com / images.velog.io / blog.kakaocdn.net: post images for backup.
-- api.anthropic.com: only the optional tone rewrite above.
+- generativelanguage.googleapis.com: only the optional tone rewrite above.
 
 No backend server. Apart from the optional tone setting, no data is sent anywhere other than GitHub, velog and Tistory. No remote code is loaded.
 ```

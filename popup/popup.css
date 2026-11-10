@@ -119,4 +119,4 @@ button:disabled { cursor: default; opacity: 0.55; }
 #settings .first { margin-top: 0; padding-top: 0; border-top: none; }
 #tone, #repo-select, #repo-folder, #api-key { box-sizing: border-box; width: 100%; margin-top: 4px; }
 #tone-mine { margin-top: 6px; }
-#repo-folder-hint, #tone-hint, #key-hint, #tone-status { margin-left: 0; }
+#repo-folder-hint, #tone-hint, #key-hint, #free-note, #tone-status { margin-left: 0; }

@@ -3,7 +3,7 @@ import {
   toMarkdown, filePath, findImages, replaceImages, imageDir, imageName, relativeLink,
   sourceLine, indexPostFiles, candidateFiles, cleanFolder, folderList, isRepoName,
 } from './markdown.js';
-import { rewriteTone, describeStyle, stop } from './tone.js';
+import { rewriteTone, describeStyle, stop, PROFILE_VERSION } from './tone.js';
 import { fetchPost, fetchAllPosts, normalize } from './velog.js';
 import * as tistory from './tistory.js';
 
@@ -58,6 +58,11 @@ function sourceOf(url) {
 
 // 서비스 워커가 새로 떴다면 전에 하던 가져오기는 이미 멈춘 것이라 표시를 지운다
 store.remove('importStatus');
+// 예전 버전이 남긴 것: Claude 키, 그리고 비공개 저장소의 글이 섞였을 수 있는 예전 판의 "내 말투" 분석 결과
+store.remove('anthropicKey');
+store.get('toneProfile').then(({ toneProfile }) => {
+  if (toneProfile && toneProfile.v !== PROFILE_VERSION) store.remove('toneProfile');
+}).catch(() => {});
 
 // 오래 걸리는 작업 중에 서비스 워커가 잠들지 않게 20초마다 확장 API를 부른다
 async function keepAlive(fn) {
@@ -121,23 +126,33 @@ async function connectRepo(repo, folder) {
 
 // 말투 바꾸기 준비: API 키와 (내 말투면) 말투 설명. 원래 말투면 null.
 // 가져오기 전에 한 번만 해서, 키가 없거나 분석이 안 되면 글마다 되풀이하지 않고 바로 멈춘다.
-async function toneSetup(token, tone) {
+// onWait(초): 한도 때문에 기다릴 때 호출 (가져오기 화면에 알리는 용도, 처음 하는 "내 말투" 분석 중에도)
+async function toneSetup(token, tone, onWait) {
   if (!tone || tone === 'original') return null;
-  const { anthropicKey, toneProfile } = await store.get(['anthropicKey', 'toneProfile']);
-  if (!anthropicKey) throw stop('말투를 바꾸려면 ⚙ 설정에 Anthropic API 키를 넣어 주세요.');
-  const profile = tone === 'mine' ? (toneProfile?.text ?? (await analyzeMyTone(token, anthropicKey))) : null;
-  return { tone, key: anthropicKey, profile };
+  const { geminiKey, toneProfile } = await store.get(['geminiKey', 'toneProfile']);
+  if (!geminiKey) throw stop('말투를 바꾸려면 ⚙ 설정에 Gemini API 키를 넣어 주세요.');
+  const profile = tone === 'mine' ? (toneProfile?.v === PROFILE_VERSION ? toneProfile.text : await analyzeMyTone(token, geminiKey, onWait)) : null;
+  return { tone, key: geminiKey, profile, onWait };
 }
 
-const applyTone = async (post, setup) =>
-  !setup || !post.body.trim() ? post : { ...post, body: await rewriteTone(setup.key, post.body, setup.tone, setup.profile) };
+// 무료 구간에 보낸 글은 구글이 서비스 개선에 쓸 수 있어서, 비공개 글은 AI에 보내지 않는다
+const PRIVATE_SKIPPED = '비공개 글은 AI에 보내지 않아서 말투를 바꾸지 않고 건너뛰었어요.';
+const PRIVATE_KEPT = '비공개로 바뀐 글이라 말투를 바꿀 수 없어서 저장하지 않았어요. 저장소의 예전 글은 그대로예요.';
+// set(문구)로 화면에 알린다. 알리지 못해도 말투 바꾸기는 계속한다.
+const waitStatus = (set) => (seconds) => void Promise.resolve(set(`한도 때문에 ${seconds}초 기다리는 중`)).catch(() => {});
+
+async function applyTone(post, setup) {
+  if (!setup || !post.body.trim()) return post;
+  if (post.is_private) throw new Error(PRIVATE_SKIPPED);
+  return { ...post, body: await rewriteTone(setup.key, post.body, setup.tone, setup.profile, setup.onWait) };
+}
 
 // 사용자가 GitHub에 정리한 TIL·마크다운 글로 말투 설명을 만들어 둔다
-async function analyzeMyTone(token, apiKey) {
+async function analyzeMyTone(token, apiKey, onWait) {
   const samples = await styleSamples(token);
-  if (!samples.length) throw stop('GitHub에서 말투를 볼 TIL·마크다운 글을 찾지 못했어요.');
-  const text = await describeStyle(apiKey, samples);
-  await store.set({ toneProfile: { text, time: Date.now() } });
+  if (!samples.length) throw stop('공개 저장소에서 말투를 볼 TIL·마크다운 글을 찾지 못했어요. 비공개 저장소의 글은 보지 않아요.');
+  const text = await describeStyle(apiKey, samples, onWait);
+  await store.set({ toneProfile: { text, time: Date.now(), v: PROFILE_VERSION } });
   return text;
 }
 
@@ -149,7 +164,8 @@ const TIL_REPO = /(^|[-_.])til([-_.]|$)|today-?i-?learned/i; // utils 같은 이
 const NOTE_PATH = /(^|\/)(til|notes?|study|blog|posts?|정리|공부)(\/|$)/i;
 
 async function styleSamples(token) {
-  const repos = (await listRepos(token)).filter((r) => !r.fork);
+  // 공개 저장소만: 비공개 저장소의 글은 무료 구간 AI에 보내지 않는다
+  const repos = (await listRepos(token)).filter((r) => !r.fork && !r.private);
   repos.sort((a, b) => TIL_REPO.test(b.name) - TIL_REPO.test(a.name)); // TIL 저장소 먼저
   const samples = [];
   let reads = 0;
@@ -249,7 +265,11 @@ async function publish(id, token, source, { commit = true, tone } = {}) {
     );
   }
 
-  const setup = await toneSetup(token, tone ?? toneOf(key));
+  const wanted = tone ?? toneOf(key);
+  // 가져오는 중(tone 있음)이면 건너뛰고, 말투를 바꿔 둔 글이 나중에 비공개가 됐으면 저장소의 예전 글을 그대로 둔다
+  if (wanted && post.is_private) throw new Error(tone ? PRIVATE_SKIPPED : PRIVATE_KEPT);
+  // 가져오는 중일 때만 화면에 기다리는 중을 알린다 (그 상태는 가져오기가 끝나며 지워진다)
+  const setup = await toneSetup(token, wanted, tone ? waitStatus((text) => store.set({ importStatus: text })) : undefined);
   const { path, files, deleteDirs } = await postFiles(await applyTone(post, setup), backupImages, oldPath, base);
   const has = await commitFiles(token, repo, {
     files,
@@ -346,7 +366,7 @@ async function importAll(blog, username, token) {
   const { repo, savePrivate, backupImages, base, pathOf, toneOf, remember, rememberPosts } = await target(token);
   const status = (importStatus) => store.set({ importStatus });
   const { tone } = await store.get('tone');
-  const setup = await toneSetup(token, tone); // 키가 없거나 내 말투 분석이 안 되면 여기서 멈춘다
+  const setup = await toneSetup(token, tone, waitStatus(status)); // 키가 없거나 내 말투 분석이 안 되면 여기서 멈춘다
   const { source, items, load, brief } = await postList(blog, username, (n) => status(`글 목록 불러오는 중 (${n}개)`));
   // 말투를 바꿔 가져올 때는 저장소에 이미 있는 글을 건너뛴다.
   // 다시 바꾸면 돈이 또 들고 매번 문장이 달라져 커밋이 생긴다. (원래 말투면 다시 저장해도 내용이 같아 커밋이 없다)
@@ -359,6 +379,7 @@ async function importAll(blog, username, token) {
   }
   let saved = 0;
   let kept = 0;
+  let privateSkipped = 0; // 말투를 바꾸느라 AI에 보내야 해서 건너뛴 비공개 글
   let broken = 0;
   let lastError = '';
   let stopped = null; // 키·연결 문제로 멈출 때: 이 묶음에서 이미 돈을 내고 바꾼 글은 커밋한 뒤 멈춘다
@@ -384,6 +405,10 @@ async function importAll(blog, username, token) {
         continue;
       }
       if (!post || post.is_temp || (post.is_private && !savePrivate)) continue;
+      if (setup && post.is_private) {
+        privateSkipped++;
+        continue;
+      }
       let toned;
       try {
         if (setup) await status(`말투 바꾸는 중 ${start + j + 1}/${items.length}`);
@@ -419,6 +444,7 @@ async function importAll(blog, username, token) {
   }
   const skipped =
     (kept ? ` 이미 저장된 글 ${kept}개는 건너뜀.` : '') +
+    (privateSkipped ? ` 비공개 글 ${privateSkipped}개는 AI에 보내지 않아 건너뜀.` : '') +
     (broken ? ` (못 읽은 글 ${broken}개는 건너뜀: ${lastError})` : '');
   if (!saved) return `가져올 글이 없어요.${skipped}`;
   return `과거 글 ${saved}개를 GitHub에 저장했어요.${skipped}`;
@@ -554,10 +580,10 @@ async function handle(msg, sender) {
       // 저장 폴더를 고를 수 있게 저장소 안의 폴더 목록 (못 읽으면 빈 목록: 새 이름을 쓰면 된다)
       return folderList((await listFiles(token, checkRepo(msg.repo)).catch(() => [])).map((f) => f.path));
     case 'analyzeTone': {
-      fromPopup(sender); // 사용자의 API 크레딧을 쓰므로 블로그 페이지에서 온 요청은 받지 않는다
-      const { anthropicKey } = await store.get('anthropicKey');
-      if (!anthropicKey) throw new Error('먼저 Anthropic API 키를 넣어 주세요.');
-      return keepAlive(() => analyzeMyTone(token, anthropicKey));
+      fromPopup(sender); // 사용자의 API 키와 무료 한도를 쓰므로 블로그 페이지에서 온 요청은 받지 않는다
+      const { geminiKey } = await store.get('geminiKey');
+      if (!geminiKey) throw new Error('먼저 Gemini API 키를 넣어 주세요.');
+      return keepAlive(() => analyzeMyTone(token, geminiKey));
     }
     default:
       throw new Error(`알 수 없는 요청: ${msg.type}`);

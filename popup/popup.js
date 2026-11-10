@@ -1,4 +1,5 @@
 import { cleanFolder } from '../src/markdown.js';
+import { PROFILE_VERSION } from '../src/tone.js';
 
 const $ = (id) => document.getElementById(id);
 const store = chrome.storage.local;
@@ -23,20 +24,20 @@ let queue = Promise.resolve(); // 고른 글을 차례대로 가져온다 (여�
 async function render() {
   const {
     token, user, repo, pending, authError, lastSync, savePrivate = false, backupImages = true, autoSave = true, importStatus,
-    folders = {}, tone = 'original', anthropicKey = '', toneProfile,
+    folders = {}, tone = 'original', geminiKey = '', toneProfile,
     importBlog = 'velog', velogUser, importUser = velogUser, // velogUser: 1.0.0이 저장한 값
   } = await store.get();
   $('auto-save').checked = autoSave;
   $('save-private').checked = savePrivate;
   $('backup-images').checked = backupImages;
   $('tone').value = tone;
-  if (document.activeElement !== $('api-key')) $('api-key').value = anthropicKey;
+  if (document.activeElement !== $('api-key')) $('api-key').value = geminiKey;
   $('key-box').hidden = tone === 'original';
   $('tone-mine').hidden = tone !== 'mine';
   if (!$('tone-status').dataset.busy) {
     $('tone-status').textContent =
-      tone === 'original' ? '' : !anthropicKey ? 'API 키를 넣어야 말투를 바꿀 수 있어요.'
-      : tone === 'mine' ? (toneProfile ? `내 말투 분석함 (${new Date(toneProfile.time).toLocaleDateString()})` : '처음 가져올 때 내 GitHub 글을 보고 말투를 분석해요.')
+      tone === 'original' ? '' : !geminiKey ? 'API 키를 넣어야 말투를 바꿀 수 있어요.'
+      : tone === 'mine' ? (toneProfile?.v === PROFILE_VERSION ? `내 말투 분석함 (${new Date(toneProfile.time).toLocaleDateString()})` : '처음 가져올 때 내 GitHub 글을 보고 말투를 분석해요.')
       : '';
   }
   savedFolders = folders;
@@ -48,7 +49,8 @@ async function render() {
   }
   $('import-btn').disabled = !!importStatus || pendingImports > 0;
   $('list-btn').disabled = !!importStatus || listing || pendingImports > 0;
-  $('import-status').textContent = importStatus ?? '비공개 글은 "비공개 글도 저장"을 켜야 가져와요.';
+  $('import-status').textContent =
+    importStatus ?? `비공개 글은 "비공개 글도 저장"을 켜야 가져와요.${tone === 'original' ? '' : ' 말투를 바꿔 가져올 때는 비공개 글을 건너뛰어요.'}`;
   if (lastSync) {
     // 위 줄: 무엇을 했는지와 언제, 아래 줄: 결과 (성공·실패는 왼쪽 선 색)
     const title = document.createElement('b');
@@ -185,7 +187,16 @@ $('auto-save').onchange = (e) => store.set({ autoSave: e.target.checked });
 $('save-private').onchange = (e) => store.set({ savePrivate: e.target.checked });
 $('backup-images').onchange = (e) => store.set({ backupImages: e.target.checked });
 $('tone').onchange = (e) => store.set({ tone: e.target.value });
-$('api-key').onchange = (e) => store.set({ anthropicKey: e.target.value.trim() });
+$('api-key').onchange = (e) => {
+  const key = e.target.value.trim();
+  // 키는 영어·숫자·기호뿐이다. 복사하다 한글 같은 글자가 섞이면 요청이 이상하게 실패하므로 저장 전에 알려 준다.
+  if (key && !/^[\x21-\x7e]+$/.test(key)) {
+    $('error').textContent = 'API 키에는 영어, 숫자, 기호만 들어가요. 복사할 때 다른 글자가 섞이지 않았는지 확인해 주세요.';
+    return;
+  }
+  $('error').textContent = '';
+  store.set({ geminiKey: key });
+};
 $('analyze-btn').onclick = async () => {
   const status = $('tone-status');
   status.dataset.busy = '1';
