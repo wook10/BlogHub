@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toMarkdown, filePath, indexPostFiles, candidateFiles, sourceLine } from '../src/markdown.js';
+import { toMarkdown, filePath, indexPostFiles, candidateFiles, sourceLine, imageDir, relativeLink, cleanFolder, folderList, isRepoName } from '../src/markdown.js';
 
 const post = {
   title: 'React: "상태" 관리',
@@ -103,4 +103,44 @@ test('글 주소 줄은 파일에 적는 줄과 같다', () => {
   const t = { ...post, series: null, source: 'tistory', url: 'https://me.tistory.com/1' };
   assert.ok(toMarkdown(t, '2026-11-08').split('\n').includes(sourceLine(t)));
   assert.ok(toMarkdown(post, '2026-11-08').split('\n').includes(sourceLine(post)));
+});
+
+test('티스토리 카테고리 폴더 (시리즈가 없을 때)', () => {
+  assert.equal(filePath({ id: '1', url_slug: 'x-1', series: null, category: '개발/일상' }, '2026-11-07'), 'posts/개발-일상/2026-11-07-x-1.md');
+});
+
+test('저장 폴더: 고른 폴더 안에 글, 맨 위 폴더 아래 images/에 이미지, 상대 링크', () => {
+  const p = { id: 'i', url_slug: 'x', series: '리액트' };
+  assert.equal(filePath(p, '2026-11-07', 'TIL/블로그'), 'TIL/블로그/리액트/2026-11-07-x.md');
+  assert.equal(imageDir('TIL/블로그/리액트/2026-11-07-x.md'), 'TIL/images/2026-11-07-x');
+  assert.equal(relativeLink('TIL/블로그/리액트/2026-11-07-x.md', 'TIL/images/2026-11-07-x/1.png'), '../../images/2026-11-07-x/1.png');
+  // 예전과 같은 모양 (posts)
+  assert.equal(relativeLink('posts/a.md', 'posts/images/a/1.png'), 'images/a/1.png');
+  assert.equal(relativeLink('posts/시리즈/a.md', 'posts/images/a/1.png'), encodeURI('../images/a/1.png'));
+});
+
+test('cleanFolder: 위험한 경로를 막고 비면 posts', () => {
+  assert.equal(cleanFolder(' TIL/ 블로그/ '), 'TIL/블로그');
+  assert.equal(cleanFolder('../../etc'), 'untitled/untitled/etc');
+  assert.equal(cleanFolder('.github/x'), 'github/x');
+  assert.equal(cleanFolder(''), 'posts');
+  assert.equal(cleanFolder(undefined), 'posts');
+});
+
+test('folderList: 저장소 폴더 목록 (숨김 폴더·이미지 폴더 제외)', () => {
+  assert.deepEqual(
+    folderList(['README.md', 'FE/React/a.md', 'posts/images/2026-11-07-x/1.png', 'posts/b.md', '.github/workflows/c.yml']),
+    ['FE', 'posts', 'FE/React', 'posts/images'],
+  );
+});
+
+test('folderList: 사용자가 만든 images 폴더는 보이고, BlogHub 글별 이미지 폴더는 숨긴다 (얕은 폴더부터)', () => {
+  assert.deepEqual(folderList(['FE/images/logo.png', 'posts/images/2026-11-07-x/1.png', 'a/b/c.md']), [
+    'a', 'FE', 'posts', 'a/b', 'FE/images', 'posts/images',
+  ]);
+});
+
+test('isRepoName: 아이디/저장소만, 경로를 빠져나가는 이름은 막는다', () => {
+  for (const ok of ['wook10/TIL', 'a-b/my.repo_1', 'wook10/.github']) assert.equal(isRepoName(ok), true, ok);
+  for (const bad of ['../evil', 'a/..', 'a/.', 'a/b/c', '/x', 'x', '', undefined, 'a b/c']) assert.equal(isRepoName(bad), false, String(bad));
 });

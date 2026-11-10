@@ -32,7 +32,8 @@ export const findImages = (body) => [...new Set(body.match(VELOG_IMAGE) ?? [])];
 export const replaceImages = (body, links) => body.replace(VELOG_IMAGE, (url) => links.get(url) ?? url);
 
 // posts/시리즈/2026-11-08-a.md → posts/images/2026-11-08-a
-export const imageDir = (mdPath) => `posts/images/${mdPath.split('/').pop().replace(/\.md$/, '')}`;
+// 이미지는 맨 위 폴더 아래 images/에 둔다. 글 경로만으로 알 수 있어야 저장 폴더를 바꾼 뒤에도 예전 글의 이미지를 지울 수 있다.
+export const imageDir = (mdPath) => `${mdPath.split('/')[0]}/images/${mdPath.split('/').pop().replace(/\.md$/, '')}`;
 
 const IMAGE_EXT = /^(png|jpe?g|gif|webp|svg|avif)$/i;
 
@@ -46,17 +47,46 @@ export function imageName(url, index, contentType = '') {
 
 // 마크다운 파일에서 저장소 안 파일을 가리키는 상대 링크 (posts/시리즈/a.md → ../images/...)
 export function relativeLink(mdPath, target) {
-  const depth = mdPath.split('/').length - 2;
-  return encodeURI('../'.repeat(depth) + target.slice('posts/'.length));
+  const from = mdPath.split('/').slice(0, -1);
+  const to = target.split('/');
+  let same = 0;
+  while (same < from.length && same < to.length - 1 && from[same] === to[same]) same++;
+  return encodeURI('../'.repeat(from.length - same) + to.slice(same).join('/'));
 }
 
 // 경로를 깨거나 상위 폴더로 빠져나가는 문자를 없앤다
 const clean = (s) => s.replace(/[\\/:*?"<>|#%\x00-\x1f]+/g, '-').trim().replace(/^\.+/, '') || 'untitled';
 
+// "아이디/저장소" 모양인지. 점만 있는 이름(..)은 GitHub 주소 경로를 빠져나가므로 막는다.
+export const isRepoName = (repo) => typeof repo === 'string' && /^[A-Za-z0-9-]+\/(?!\.{1,2}$)[\w.-]+$/.test(repo);
+
+// 저장소 파일 경로들 → 저장 폴더로 고를 만한 폴더 목록.
+// 숨김 폴더와 BlogHub가 글마다 만드는 이미지 폴더(맨위/images/날짜-글)는 뺀다. 얕은 폴더부터 보여 준다.
+export function folderList(paths) {
+  const dirs = new Set();
+  for (const path of paths) {
+    const parts = path.split('/').slice(0, -1);
+    for (let i = 1; i <= parts.length; i++) {
+      const dir = parts.slice(0, i);
+      if (dir.some((p) => p.startsWith('.') || p === 'node_modules')) break;
+      if (dir[1] === 'images' && /^\d{4}-\d{2}-\d{2}-/.test(dir[2] ?? '')) break;
+      dirs.add(dir.join('/'));
+    }
+  }
+  const depth = (d) => d.split('/').length;
+  return [...dirs].sort((a, b) => depth(a) - depth(b) || a.localeCompare(b)).slice(0, 300);
+}
+
+// 팝업에서 고른 저장 폴더 (예: "TIL/블로그"). 칸마다 위험한 글자를 없애고, 비었으면 posts.
+export const cleanFolder = (folder) =>
+  String(folder ?? '').split(/[\\/]+/).map((s) => s.trim()).filter(Boolean).map(clean).join('/') || 'posts';
+
 // velog의 url_slug는 계정 안에서 겹치지 않고 제목으로 만들어지므로 파일 이름으로 쓴다.
-// 시리즈에 속한 글은 posts/시리즈명/ 폴더에 둔다.
-export function filePath(post, date) {
-  const dir = post.series ? `posts/${clean(post.series)}` : 'posts';
+// 글은 저장 폴더(base, 기본 posts) 안에 둔다. 시리즈에 속한 글은 posts/시리즈명/ 폴더에 둔다.
+// 티스토리 글은 카테고리 폴더에 둔다 (카테고리를 못 찾으면 폴더 없이).
+export function filePath(post, date, base = 'posts') {
+  const sub = post.series ?? post.category;
+  const dir = sub ? `${base}/${clean(sub)}` : base;
   return `${dir}/${date}-${fileSlug(post)}.md`;
 }
 
@@ -74,7 +104,7 @@ export function indexPostFiles(files) {
   const byNumber = new Map();
   const add = (map, key, file) => map.set(key, [...(map.get(key) ?? []), file]);
   for (const file of files) {
-    if (!/^posts\/.*\.md$/.test(file.path)) continue;
+    if (!file.path.endsWith('.md')) continue; // 저장 폴더를 바꿨을 수 있어 저장소 전체를 본다 (파일 속 글 주소로 다시 확인)
     const name = file.path.split('/').pop().replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '');
     add(bySlug, name, file);
     // 티스토리 파일 이름은 "주소-번호" 또는 "주소-번호-번호앞8자리"

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { imagesToHtml, unescapeImgSrc, parsePostPage, normalize, fetchPost, blogOrigin, listPosts, originOf } from '../src/tistory.js';
+import { categoryName, imagesToHtml, unescapeImgSrc, parsePostPage, normalize, fetchPost, blogOrigin, listPosts, originOf } from '../src/tistory.js';
 
 const origin = 'https://me.tistory.com';
 const raw = {
@@ -147,4 +147,15 @@ test('unescapeImgSrc: 코드 블록 속 예제는 그대로, 괄호 든 이미�
   const code = '```html\n<img src="a.png?x=1&amp;y=2">\n```';
   assert.equal(unescapeImgSrc(code), code);
   assert.equal(imagesToHtml('[##_Image|kage@ab/a(1).png|CDM|1.3|{}_##]'), '<img src="https://blog.kakaocdn.net/dn/ab/a%281%29.png">');
+});
+
+test('categoryName: 블로그 정보에서 카테고리 이름 (하위 분류 포함), 모르면 null', () => {
+  const blog = { categories: [{ id: 5, name: '개발', children: [{ id: 7, label: '리액트' }] }] };
+  const page = `  window.Config = {\n    blog: ${JSON.stringify(blog)},\n    post: {"id":1},\n  }`;
+  assert.equal(categoryName(page, 5), '개발');
+  assert.equal(categoryName(page, '7'), '리액트');
+  assert.equal(categoryName(page, 9), null);
+  assert.equal(categoryName(page, 0), null); // 분류 없음
+  assert.equal(categoryName('  window.Config = {\n    post: {"id":1},\n  }', 5), null); // 블로그 정보가 없어도 글은 저장
+  assert.equal(categoryName('  window.Config = {\n    blog: {깨짐,\n  }', 5), null);
 });

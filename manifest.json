@@ -23,6 +23,7 @@
     "https://velog.velcdn.com/*",
     "https://images.velog.io/*",
     "https://*.tistory.com/*",
-    "https://blog.kakaocdn.net/*"
+    "https://blog.kakaocdn.net/*",
+    "https://api.anthropic.com/*"
   ]
 }

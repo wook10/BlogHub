@@ -1,3 +1,5 @@
+import { cleanFolder } from '../src/markdown.js';
+
 const $ = (id) => document.getElementById(id);
 const store = chrome.storage.local;
 
@@ -13,6 +15,7 @@ async function send(msg) {
 
 let reposLoaded = false;
 let connectedRepo = null; // 저장해 둔 연결 저장소 (연결 버튼 글자에 쓴다)
+let savedFolders = {}; // 저장소마다 고른 저장 폴더
 let listing = false; // 목록을 불러오는 중
 let pendingImports = 0; // 차례를 기다리거나 가져오는 중인 글 수 (그동안 목록을 새로 만들지 않게)
 let queue = Promise.resolve(); // 고른 글을 차례대로 가져온다 (여러 개를 빠르게 눌러도 하나씩)
@@ -20,11 +23,23 @@ let queue = Promise.resolve(); // 고른 글을 차례대로 가져온다 (여�
 async function render() {
   const {
     token, user, repo, pending, authError, lastSync, savePrivate = false, backupImages = true, autoSave = true, importStatus,
+    folders = {}, tone = 'original', anthropicKey = '', toneProfile,
     importBlog = 'velog', velogUser, importUser = velogUser, // velogUser: 1.0.0이 저장한 값
   } = await store.get();
   $('auto-save').checked = autoSave;
   $('save-private').checked = savePrivate;
   $('backup-images').checked = backupImages;
+  $('tone').value = tone;
+  if (document.activeElement !== $('api-key')) $('api-key').value = anthropicKey;
+  $('key-box').hidden = tone === 'original';
+  $('tone-mine').hidden = tone !== 'mine';
+  if (!$('tone-status').dataset.busy) {
+    $('tone-status').textContent =
+      tone === 'original' ? '' : !anthropicKey ? 'API 키를 넣어야 말투를 바꿀 수 있어요.'
+      : tone === 'mine' ? (toneProfile ? `내 말투 분석함 (${new Date(toneProfile.time).toLocaleDateString()})` : '처음 가져올 때 내 GitHub 글을 보고 말투를 분석해요.')
+      : '';
+  }
+  savedFolders = folders;
   // 마지막으로 글을 저장한 블로그와 아이디를 미리 채운다 (직접 고친 값은 그대로 둔다)
   if (importUser && !$('import-user').value) {
     $('import-blog').value = importBlog;
@@ -35,8 +50,19 @@ async function render() {
   $('list-btn').disabled = !!importStatus || listing || pendingImports > 0;
   $('import-status').textContent = importStatus ?? '비공개 글은 "비공개 글도 저장"을 켜야 가져와요.';
   if (lastSync) {
-    const time = new Date(lastSync.time).toLocaleString();
-    $('last-sync').textContent = `최근 기록 (${time}) "${lastSync.title}": ${lastSync.message}`;
+    // 위 줄: 무엇을 했는지와 언제, 아래 줄: 결과 (성공·실패는 왼쪽 선 색)
+    const title = document.createElement('b');
+    title.textContent = lastSync.title;
+    const time = document.createElement('span');
+    time.className = 'sync-time';
+    time.textContent = new Date(lastSync.time).toLocaleString('ko-KR', {
+      month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    });
+    const head = document.createElement('div');
+    head.append(title, ' ', time);
+    const message = document.createElement('div');
+    message.textContent = lastSync.message;
+    $('last-sync').replaceChildren(head, message);
     $('last-sync').className = lastSync.ok ? 'ok' : 'fail';
   }
   const waiting = pending && pending.expiresAt > Date.now();
@@ -50,11 +76,13 @@ async function render() {
   if (waiting) $('user-code').textContent = pending.userCode;
   if (token) {
     $('user').textContent = user;
-    $('current-repo').textContent = repo ?? '없음';
+    // 저장소와 그 안의 폴더를 GitHub 주소처럼 한 줄로 (어디에 저장되는지 한눈에)
+    $('current-repo').textContent = repo ? `${repo}/${cleanFolder(folders[repo])}` : '아직 연결 안 함';
     if (!reposLoaded) {
       reposLoaded = true;
       const repos = await send({ type: 'repos' }).catch(() => []);
       $('repo-select').replaceChildren(...repos.map((name) => new Option(name, name, false, name === repo)));
+      loadFolders();
     }
     connectedRepo = repo ?? null;
     showConnected();
@@ -80,29 +108,69 @@ async function withProgress(btn, busy, task) {
   showConnected();
 }
 
-// 지금 연결된 저장소를 고르고 있으면 버튼에 "연결됨"을 계속 보여 준다
+const folderOf = (repo) => savedFolders[repo] ?? 'posts';
+const NEW_FOLDER = '\n새 폴더'; // 폴더 이름에 쓸 수 없는 값이라 실제 폴더와 겹치지 않는다
+
+// 고른 폴더. 백그라운드가 저장하는 이름과 같게 정리해야 "연결됨"을 바르게 보여 준다 ("TIL/"과 "TIL"은 같은 폴더)
+const typedFolder = () =>
+  cleanFolder($('folder-select').value === NEW_FOLDER ? $('repo-folder').value : $('folder-select').value);
+
+function showFolders(dirs, current) {
+  const names = [...new Set([current, 'posts', ...dirs])].sort();
+  $('folder-select').replaceChildren(
+    ...names.map((d) => new Option(d, d, false, d === current)),
+    new Option('+ 새 폴더 만들기', NEW_FOLDER),
+  );
+  $('repo-folder').hidden = true;
+}
+
+// 지금 연결된 저장소와 폴더를 고르고 있으면 버튼에 "연결됨"을 계속 보여 준다
 function showConnected() {
-  const connected = !!connectedRepo && $('repo-select').value === connectedRepo;
+  const repo = $('repo-select').value;
+  const connected = !!connectedRepo && repo === connectedRepo && typedFolder() === folderOf(repo);
   $('select-btn').textContent = connected ? '연결됨' : '연결';
   $('select-btn').disabled = connected;
 }
-$('repo-select').onchange = showConnected;
+
+// 고른 저장소의 폴더 목록으로 저장 폴더 칸을 채운다
+async function loadFolders() {
+  const repo = $('repo-select').value;
+  showFolders([], folderOf(repo)); // 목록이 오기 전에도 지금 폴더는 보이게
+  showConnected();
+  if (!repo) return;
+  const dirs = (await send({ type: 'repoFolders', repo }).catch(() => null)) ?? [];
+  if ($('repo-select').value !== repo) return; // 그사이 다른 저장소를 골랐다
+  showFolders(dirs, folderOf(repo));
+  showConnected();
+}
+$('repo-select').onchange = loadFolders;
+$('folder-select').onchange = () => {
+  const isNew = $('folder-select').value === NEW_FOLDER;
+  $('repo-folder').hidden = !isNew;
+  if (isNew) $('repo-folder').focus();
+  showConnected();
+};
+$('repo-folder').oninput = showConnected;
 
 $('select-btn').onclick = () => {
   const repo = $('repo-select').value;
-  if (repo) withProgress($('select-btn'), '연결 중…', () => send({ type: 'selectRepo', repo }));
+  const folder = typedFolder();
+  if (repo) withProgress($('select-btn'), '연결 중…', () => send({ type: 'selectRepo', repo, folder }));
 };
 
 $('create-form').onsubmit = async (e) => {
   e.preventDefault();
   let name;
+  // 폴더 목록은 위에서 고른 다른 저장소의 것이라, 새 폴더 이름을 직접 쓴 경우만 쓰고 아니면 posts
+  const folder = $('folder-select').value === NEW_FOLDER ? typedFolder() : 'posts';
   await withProgress(e.submitter, '만드는 중…', async () => {
-    name = await send({ type: 'createRepo', name: $('repo-name').value.trim(), isPrivate: $('repo-private').checked });
+    name = await send({ type: 'createRepo', name: $('repo-name').value.trim(), isPrivate: $('repo-private').checked, folder });
   });
   if (name) {
+    savedFolders = { ...savedFolders, [name]: folder }; // 저장값 변경 알림보다 먼저 보여 줘도 맞게
     $('repo-select').prepend(new Option(name, name, true, true));
     $('repo-name').value = '';
-    showConnected();
+    loadFolders(); // 새 저장소의 폴더로 바꿔 보여 준다
   }
 };
 
@@ -116,6 +184,18 @@ $('settings-btn').onclick = () => {
 $('auto-save').onchange = (e) => store.set({ autoSave: e.target.checked });
 $('save-private').onchange = (e) => store.set({ savePrivate: e.target.checked });
 $('backup-images').onchange = (e) => store.set({ backupImages: e.target.checked });
+$('tone').onchange = (e) => store.set({ tone: e.target.value });
+$('api-key').onchange = (e) => store.set({ anthropicKey: e.target.value.trim() });
+$('analyze-btn').onclick = async () => {
+  const status = $('tone-status');
+  status.dataset.busy = '1';
+  status.textContent = '내 GitHub 글을 읽고 말투를 분석하는 중…';
+  await withProgress($('analyze-btn'), '분석 중…', async () => {
+    await send({ type: 'analyzeTone' });
+  });
+  delete status.dataset.busy;
+  render();
+};
 $('import-btn').onclick = () => {
   $('missing').hidden = true; // 한 번에 가져오면 목록은 의미가 없어진다
   send({ type: 'import', blog: $('import-blog').value, username: $('import-user').value }).catch(() => {});

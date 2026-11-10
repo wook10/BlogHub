@@ -57,14 +57,42 @@ export async function listPosts(origin, onPage) {
 // 지워진 글은 티스토리가 "삭제된 글입니다" 알림만 있는 짧은 페이지를 준다 → null.
 // 그 밖에 알아볼 수 없는 화면은 오류: 지워진 것으로 착각해 GitHub 백업을 지우지 않게.
 export function parsePostPage(html) {
-  // window.Config = { ... } 블록 안의 post 줄만 본다 (페이지 다른 곳의 post: 를 잘못 읽지 않게)
+  const post = configValue(html, 'post');
+  if (post) return post;
+  if (/alert\([^)]*삭제된 글/.test(html)) return null;
+  throw new Error('티스토리 글 화면을 읽지 못했어요 (티스토리가 바뀌었을 수 있어요)');
+}
+
+// window.Config = { ... } 블록 안의 "이름: {...}" 한 줄 (페이지 다른 곳의 같은 이름을 잘못 읽지 않게). 없으면 undefined.
+function configValue(html, key) {
   const lines = html.split('\n');
   const start = lines.findIndex((l) => /^\s*window\.Config\s*=\s*\{\s*$/.test(l));
   const end = start < 0 ? -1 : lines.findIndex((l, i) => i > start && /^\s*\};?\s*$/.test(l));
-  const line = end < 0 ? null : lines.slice(start + 1, end).find((l) => /^\s{0,8}post:\s*\{/.test(l));
-  if (line) return JSON.parse(line.replace(/^\s*post:\s*/, '').replace(/,\s*$/, ''));
-  if (/alert\([^)]*삭제된 글/.test(html)) return null;
-  throw new Error('티스토리 글 화면을 읽지 못했어요 (티스토리가 바뀌었을 수 있어요)');
+  const line = end < 0 ? null : lines.slice(start + 1, end).find((l) => new RegExp(`^\\s{0,8}${key}:\\s*\\{`).test(l));
+  return line ? JSON.parse(line.replace(new RegExp(`^\\s*${key}:\\s*`), '').replace(/,\s*$/, '')) : undefined;
+}
+
+// 글의 카테고리 이름 (블로그 정보 Config.blog.categories에서 번호로 찾는다). 못 찾으면 null → 폴더 없이 저장.
+// shortcut: 카테고리 정보의 모양을 실제 화면에서 확인하지 못해 id·name/label 이름과 children 하위 분류만 본다, 다른 모양이면 여기를 고치자.
+export function categoryName(html, categoryId) {
+  if (!Number(categoryId)) return null; // 0이나 빈 값은 분류 없음
+  let blog;
+  try {
+    blog = configValue(html, 'blog');
+  } catch {
+    return null; // 블로그 정보를 못 읽어도 글은 저장한다
+  }
+  const find = (nodes) => {
+    for (const node of Array.isArray(nodes) ? nodes : []) {
+      if (String(node?.id) === String(categoryId)) return node;
+      const child = find(node?.children);
+      if (child) return child;
+    }
+    return null;
+  };
+  const node = find(blog?.categories);
+  const name = node?.name ?? node?.label;
+  return typeof name === 'string' && name.trim() ? name.trim() : null;
 }
 
 // 글 하나. 지워졌으면 null. 로그인이 풀렸으면 오류 (지워진 것으로 착각해 GitHub에서 지우지 않게).
@@ -75,9 +103,10 @@ export async function fetchPost(origin, id, toMarkdown) {
   const res = await manageGet(origin, `/manage/newpost/${id}?type=post`);
   // 블로그 안의 다른 화면으로 넘어가도 글을 읽지 못한 것 (지워진 것으로 착각해 백업을 지우지 않게 오류)
   if (new URL(res.url).pathname !== `/manage/newpost/${id}`) throw new Error(LOGIN);
-  const raw = parsePostPage(await res.text());
+  const html = await res.text();
+  const raw = parsePostPage(html);
   if (!raw) return null;
-  const post = normalize(raw, origin); // 정보가 이상하면 변환 전에 멈춘다
+  const post = { ...normalize(raw, origin), category: categoryName(html, raw.category) }; // 정보가 이상하면 변환 전에 멈춘다
   if (!toMarkdown) return post;
   return { ...post, body: unescapeImgSrc(await toMarkdown(imagesToHtml(raw.content ?? ''))).trim() };
 }
@@ -110,7 +139,7 @@ export function normalize(p, origin) {
     // 파일 이름에 쓰는 글 주소. 같은 제목의 글이 겹치지 않게 글 번호를 붙인다.
     url_slug: `${p.slogan || 'post'}-${id}`,
     released_at: new Date(seconds * 1000).toISOString(),
-    series: null, // shortcut: 카테고리는 아직 폴더로 나누지 않는다. 쓰는 사람이 원하면 Config.blog.categories로 이름을 찾자.
+    series: null, // 티스토리에는 시리즈가 없다. 카테고리는 fetchPost가 category로 채운다.
     source: 'tistory',
     url: `${origin}/${id}`,
   };

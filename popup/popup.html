@@ -38,16 +38,39 @@
       <p class="hint">공개 저장소라면 비공개 글이 누구에게나 보여요.</p>
       <label><input type="checkbox" id="backup-images"> 글 속 이미지도 저장소에 백업</label>
       <p class="hint">티스토리 이미지는 주소가 매달 바뀌어서 꺼도 저장해요.</p>
+      <h2>가져올 때 말투</h2>
+      <select id="tone" aria-label="가져올 때 말투">
+        <option value="original">원래 말투 그대로</option>
+        <option value="first">1인칭 (나는 ~했다)</option>
+        <option value="third">3인칭 (~이다, 설명하는 글)</option>
+        <option value="mine">내 말투 (내 GitHub 글을 보고 맞춤)</option>
+      </select>
+      <p class="hint" id="tone-hint">과거 글을 가져올 때 AI가 말투를 바꿔 저장해요. 원래 글은 저장하지 않아요.</p>
+      <!-- 말투를 바꿀 때만 필요해서, 원래 말투일 때는 키와 비용 안내를 숨긴다 -->
+      <div id="key-box" hidden>
+        <label for="api-key">Anthropic API 키</label>
+        <input id="api-key" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+        <p class="hint" id="key-hint">Claude(AI)를 쓰는 열쇠예요. 이 브라우저에만 저장돼요. 쓴 만큼 유료이고 보통 글 하나에 100원 안팎, 긴 글은 몇백 원이 들어요.
+          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">API 키 만들기</a></p>
+        <div class="row" id="tone-mine" hidden>
+          <button id="analyze-btn">내 말투 다시 분석</button>
+        </div>
+        <p class="hint" id="tone-status" role="status"></p>
+      </div>
     </div>
 
     <p><b id="user"></b> 로그인됨</p>
-    <p>연결된 저장소: <b id="current-repo">없음</b></p>
+    <p>저장 위치: <b id="current-repo">아직 연결 안 함</b></p>
 
     <label for="repo-select">기존 저장소 선택</label>
+    <select id="repo-select"></select>
+    <label for="folder-select">글을 저장할 폴더</label>
     <div class="row">
-      <select id="repo-select"></select>
+      <select id="folder-select"></select>
       <button id="select-btn">연결</button>
     </div>
+    <input id="repo-folder" placeholder="새 폴더 이름 (예: TIL/블로그)" autocomplete="off" aria-label="새 폴더 이름" hidden>
+    <p class="hint" id="repo-folder-hint">없는 폴더는 목록 맨 아래 "새 폴더 만들기"로 만들어요.</p>
 
     <form id="create-form">
       <label for="repo-name">새 저장소 만들기</label>
@@ -74,7 +97,7 @@
     <p class="hint" id="import-status" role="status">비공개 글은 "비공개 글도 저장"을 켜야 가져와요.</p>
     <ul id="missing" hidden></ul>
 
-    <p id="last-sync">아직 저장한 글이 없어요.</p>
+    <div id="last-sync" aria-label="최근 기록">아직 저장한 글이 없어요.</div>
 
     <button id="logout-btn" class="link">로그아웃</button>
   </section>

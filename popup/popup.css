@@ -28,6 +28,8 @@
   }
 }
 
+/* 팝업이 길어져 세로 스크롤바가 생겨도 오른쪽이 잘리지 않게 스크롤바 자리를 미리 비워 둔다 */
+html { scrollbar-gutter: stable; overflow-x: hidden; }
 body {
   width: 300px;
   margin: 0;
@@ -37,6 +39,8 @@ body {
   font: 13px/1.5 Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
 }
 p { margin: 0 0 6px; }
+/* .row 같은 display 규칙이 hidden을 덮지 않게 */
+[hidden] { display: none !important; }
 
 /* 머리: 로고 + 이름, 오른쪽 톱니바퀴 */
 .top { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
@@ -91,6 +95,7 @@ button:disabled { cursor: default; opacity: 0.55; }
 .code { margin: 10px 0; font: 700 24px ui-monospace, Consolas, monospace; letter-spacing: 3px; text-align: center; }
 .link { margin-top: 16px; padding: 0; background: none; border: none; color: var(--muted); font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }
 .link:hover { color: var(--ink); }
+.hint a { color: var(--focus); font-weight: 600; }
 
 #error, .fail { color: var(--danger); }
 #error { margin: -6px 0 10px; font-size: 12px; }
@@ -99,7 +104,8 @@ button:disabled { cursor: default; opacity: 0.55; }
 /* 최근 기록: 왼쪽 선 색으로 성공·실패를 구분 */
 #last-sync { margin: 16px 0 0; padding: 2px 0 2px 10px; border-left: 3px solid var(--line); color: var(--muted); font-size: 12px; }
 #last-sync.ok { border-left-color: var(--grass); color: var(--ink); }
-#last-sync.fail { border-left-color: var(--danger); }
+#last-sync.fail { border-left-color: var(--danger); color: var(--ink); }
+#last-sync .sync-time { color: var(--muted); font-weight: 400; }
 .hint { margin: 2px 0 0 19px; font-size: 12px; color: var(--muted); }
 #import-status { margin: 6px 0 0; }
 
@@ -111,3 +117,6 @@ button:disabled { cursor: default; opacity: 0.55; }
 
 #main.settings-open > :not(#settings) { display: none; }
 #settings .first { margin-top: 0; padding-top: 0; border-top: none; }
+#tone, #repo-select, #repo-folder, #api-key { box-sizing: border-box; width: 100%; margin-top: 4px; }
+#tone-mine { margin-top: 6px; }
+#repo-folder-hint, #tone-hint, #key-hint, #tone-status { margin-left: 0; }
