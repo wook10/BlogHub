@@ -52,8 +52,16 @@ async function ask(apiKey, system, text, onWait) {
     if (!res.ok) {
       const error = data.error ?? {};
       const info = `${error.message ?? ''} ${JSON.stringify(error.details ?? [])}`; // 하루 한도 표시가 어디에 있든 찾는다
-      if (/API_KEY_INVALID/.test(info) || res.status === 401 || res.status === 403) {
+      if (/API_KEY_INVALID/.test(info) || res.status === 401) {
         throw stop('Gemini API 키가 맞지 않아요. ⚙ 설정에서 확인해 주세요.');
+      }
+      // 키는 맞는데 구글이 막은 경우 (무료 구간을 못 쓰는 프로젝트 등). 키가 틀린 것으로 안내하면 헷갈린다.
+      if (res.status === 403) {
+        throw stop(
+          /free tier|billing/i.test(info)
+            ? '이 키의 구글 프로젝트는 무료로 쓸 수 없다고 구글이 알려 왔어요. 학교·회사 계정 말고 개인 구글 계정으로 AI 스튜디오에서 새 키를 만들어 보세요.'
+            : `구글이 이 키로 Gemini를 쓰는 것을 막았어요 (${error.message ?? 403}). 키 권한을 확인해 주세요.`,
+        );
       }
       if (res.status === 429 && /PerDay|per day|daily/i.test(info)) {
         throw stop('오늘 쓸 수 있는 무료 한도를 다 썼어요. 내일 다시 하거나 나머지는 하나씩 가져와 주세요.');

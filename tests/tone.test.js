@@ -60,8 +60,13 @@ test('rewriteTone: Gemini에 요청하고 바꾼 글에 원래 코드를 되돌�
 test('ask: 키 오류·연결 오류·하루 한도는 가져오기를 멈추게 표시한다', async () => {
   globalThis.fetch = async () => fail(400, { message: 'API key not valid.', details: [{ reason: 'API_KEY_INVALID' }] });
   await assert.rejects(rewriteTone('bad', 'x', 'first'), (e) => e.stopAll && /API 키가 맞지 않아요/.test(e.message));
-  globalThis.fetch = async () => fail(403, { message: 'denied' });
-  await assert.rejects(rewriteTone('bad', 'x', 'first'), (e) => e.stopAll);
+  globalThis.fetch = async () => fail(401, { message: 'invalid credentials' });
+  await assert.rejects(rewriteTone('bad', 'x', 'first'), (e) => e.stopAll && /API 키가 맞지 않아요/.test(e.message));
+  // 키는 맞는데 구글이 막은 것: 키가 틀렸다고 안내하지 않는다
+  globalThis.fetch = async () => fail(403, { message: 'The Gemini API free tier is not available for this project. To use the Gemini API, please set up billing', status: 'PERMISSION_DENIED' });
+  await assert.rejects(rewriteTone('k', 'x', 'first'), (e) => e.stopAll && /무료로 쓸 수 없다/.test(e.message) && !/키가 맞지/.test(e.message));
+  globalThis.fetch = async () => fail(403, { message: 'API has not been used in project 123 before' });
+  await assert.rejects(rewriteTone('k', 'x', 'first'), (e) => e.stopAll && /막았어요/.test(e.message) && /API has not been used/.test(e.message));
   globalThis.fetch = async () => { throw new TypeError('Failed to fetch'); };
   await assert.rejects(rewriteTone('k', 'x', 'first'), (e) => e.stopAll && /연결하지 못했어요/.test(e.message));
   globalThis.fetch = async () => fail(429, { message: 'quota', details: [{ violations: [{ quotaId: 'GenerateRequestsPerDayPerProjectPerModel' }] }] });
