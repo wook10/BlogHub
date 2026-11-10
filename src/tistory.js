@@ -12,11 +12,25 @@ export function blogOrigin(url) {
   return origin;
 }
 
-// 블로그 아이디(아이디.tistory.com의 아이디)로 블로그 주소. 주소 전체(https://아이디.tistory.com/...)를 넣어도 된다.
-export const originOf = (id) => {
-  const name = String(id).trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0].replace(/\.tistory\.com$/, '');
-  return blogOrigin(`https://${name}.tistory.com/`);
+// 팝업에 넣은 블로그 아이디나 주소(아이디.tistory.com, https://아이디.tistory.com/...)로 블로그 주소
+export const originOf = (input) => {
+  const host = String(input).trim().toLowerCase().replace(/^https?:\/\//, '').split(/[/?#:]/)[0];
+  return blogOrigin(`https://${host.replace(/\.tistory\.com$/, '')}.tistory.com/`);
 };
+
+const LOGIN = '이 브라우저에서 티스토리에 로그인한 뒤 다시 해 주세요.';
+
+// 관리 화면 요청. 실패하면 고칠 수 있게 원인(연결, 없는 블로그, 로그인 안 됨, 남의 블로그)을 알려 주는 오류를 낸다.
+async function manageGet(origin, path) {
+  const res = await fetch(origin + path, { credentials: 'include' }).catch(() => {
+    throw new Error('티스토리에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.');
+  });
+  if (res.status === 404) throw new Error(`${new URL(origin).host} 블로그를 찾지 못했어요. 블로그 주소를 확인해 주세요.`);
+  if (new URL(res.url).origin !== origin) throw new Error(LOGIN); // 로그인 화면(www.tistory.com)으로 넘어감
+  if (res.status === 403) throw new Error('내 블로그가 아니에요. 이 블로그 주인 계정으로 티스토리에 로그인해 주세요.');
+  if (!res.ok) throw new Error(`티스토리 서버 오류 (${res.status})`);
+  return res;
+}
 
 // 과거 글 가져오기: 글 관리 목록(/manage/posts.json)에서 글 번호와 제목을 모두 모은다 (최신 글부터).
 // 관리 화면이라 블로그 주인으로 로그인돼 있어야 한다. 비공개 글도 들어 있다.
@@ -24,18 +38,9 @@ export async function listPosts(origin, onPage) {
   const posts = new Map();
   for (let page = 1; page <= 1000; page++) {
     const query = `category=-3&page=${page}&searchKeyword=&searchType=title&visibility=all`; // 관리 화면이 쓰는 값 그대로
-    const res = await fetch(`${origin}/manage/posts.json?${query}`, { credentials: 'include' }).catch(() => {
-      throw new Error('티스토리에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.');
-    });
-    // 없는 블로그(404), 로그인 안 됨(로그인 화면으로 넘어감), 남의 블로그(403)를 따로 알려 준다 (어느 쪽인지 알아야 고칠 수 있다)
-    if (res.status === 404) throw new Error(`${new URL(origin).host} 블로그를 찾지 못했어요. 블로그 주소를 확인해 주세요.`);
-    if (new URL(res.url).origin !== origin) throw new Error('이 브라우저에서 티스토리에 로그인한 뒤 다시 해 주세요.');
-    if (res.status === 403) throw new Error('내 블로그가 아니에요. 이 블로그 주인 계정으로 티스토리에 로그인해 주세요.');
-    if (!res.ok) throw new Error(`티스토리 서버 오류 (${res.status})`);
-    const data = await res.json().catch(() => null); // 로그인 화면(HTML)으로 넘어가면 JSON이 아니다
-    if (!Array.isArray(data?.items)) {
-      throw new Error('티스토리 글 목록을 읽지 못했어요. 내 블로그 아이디인지, 티스토리에 로그인돼 있는지 확인해 주세요.');
-    }
+    const res = await manageGet(origin, `/manage/posts.json?${query}`);
+    const data = await res.json().catch(() => null);
+    if (!Array.isArray(data?.items)) throw new Error('티스토리 글 목록을 읽지 못했어요 (티스토리가 바뀌었을 수 있어요)');
     for (const item of data.items) {
       const id = String(item.id);
       if (!/^\d+$/.test(id)) continue;
@@ -67,11 +72,9 @@ export function parsePostPage(html) {
 // 없으면 본문은 바꾸지 않는다 (글이 있는지만 볼 때).
 export async function fetchPost(origin, id, toMarkdown) {
   if (!/^\d+$/.test(id)) throw new Error('티스토리 글 번호가 이상해요');
-  const res = await fetch(`${origin}/manage/newpost/${id}?type=post`, { credentials: 'include' });
-  if (!res.ok) throw new Error(`티스토리 서버 오류 (${res.status})`);
-  if (new URL(res.url).pathname !== `/manage/newpost/${id}`) {
-    throw new Error('티스토리에 로그인돼 있는지 확인해 주세요.');
-  }
+  const res = await manageGet(origin, `/manage/newpost/${id}?type=post`);
+  // 블로그 안의 다른 화면으로 넘어가도 글을 읽지 못한 것 (지워진 것으로 착각해 백업을 지우지 않게 오류)
+  if (new URL(res.url).pathname !== `/manage/newpost/${id}`) throw new Error(LOGIN);
   const raw = parsePostPage(await res.text());
   if (!raw) return null;
   const post = normalize(raw, origin); // 정보가 이상하면 변환 전에 멈춘다

@@ -68,9 +68,9 @@ input[type="checkbox"] { margin: 0; accent-color: var(--grass); }
   padding-right: 30px;
   background: var(--field) var(--chevron) no-repeat right 10px center / 12px;
 }
-/* 고대비 모드는 배경 그림을 숨기므로 기본 화살표로 돌린다 */
+/* 고대비 모드에서는 직접 그린 회색 화살표가 잘 안 보여서 기본 화살표로 돌린다 */
 @media (forced-colors: active) {
-  :where(select) { appearance: auto; padding-right: 10px; }
+  :where(select) { appearance: auto; padding-right: 10px; background-image: none; }
 }
 input::placeholder { color: var(--muted); }
 :where(button:not(.link, #settings-btn)) { background: var(--paper); font-weight: 600; cursor: pointer; white-space: nowrap; }

@@ -52,7 +52,7 @@
 | 블로그 | 넣을 아이디 | 예 |
 | --- | --- | --- |
 | velog | `velog.io/@아이디`의 아이디 | `velog.io/@myname` → `myname` |
-| tistory | `아이디.tistory.com`의 아이디 | `myblog.tistory.com` → `myblog` |
+| tistory | `아이디.tistory.com`의 아이디 (블로그 주소를 그대로 넣어도 됩니다) | `myblog.tistory.com` → `myblog` |
 
 - 티스토리는 블로그 관리 화면의 글 목록을 읽기 때문에, **내 블로그만** 티스토리에 로그인한 상태에서 가져올 수 있습니다.
 - 비공개 글은 설정의 **비공개 글도 GitHub에 저장**을 켜야 함께 가져옵니다.
