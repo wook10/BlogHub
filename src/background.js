@@ -319,30 +319,48 @@ async function postList(blog, username, onPage) {
 
 // 저장소에 아직 없는 과거 글 목록 (팝업에서 하나씩 골라 가져오기)
 async function missingPosts(blog, username, token) {
-  const { repo, pathOf, remember, savePrivate } = await target(token);
+  const { repo, pathOf, remember, rememberPosts, savePrivate } = await target(token);
   const { source, items, brief } = await postList(blog, username);
-  // 저장되지 않을 글(임시저장, 비공개인데 설정이 꺼짐)과 이 브라우저가 저장한 글은 목록에 보이지 않게 한다
-  const posts = items
-    .map(brief)
-    .filter((p) => p && !p.isTemp && (savePrivate || !p.isPrivate) && !pathOf(source.key(String(p.id))));
+  const files = await repoFiles(token, repo, false);
+  // 이 브라우저의 "저장했다"는 기록은 저장소에 실제 파일이 있을 때만 믿는다 (GitHub에서 파일을 지웠거나 저장소를 다시 만들었을 수 있다)
+  const inRepo = (path) => !files || files.some((f) => f.path === path);
+  // 저장되지 않을 글(임시저장, 비공개인데 설정이 꺼짐)과 이미 저장된 글은 목록에 보이지 않게 한다
+  const all = items.map(brief).filter(Boolean);
+  const saveable = all.filter((p) => !p.isTemp && (savePrivate || !p.isPrivate));
+  const privateHidden = all.filter((p) => !p.isTemp && !savePrivate && p.isPrivate).length;
+  const recorded = (p) => pathOf(source.key(String(p.id)));
+  const stale = saveable.filter((p) => recorded(p) && !inRepo(recorded(p)));
+  if (stale.length) await rememberPosts(Object.fromEntries(stale.map((p) => [source.key(String(p.id)), null]))); // 틀린 기록은 지운다
+  const fresh = saveable.filter((p) => !recorded(p) || stale.includes(p));
   // 다른 브라우저에서 저장한 글도 뺀다. 찾은 경로는 기록해 둬서 나중에 수정·삭제할 때 같은 파일을 쓴다.
-  const found = await findSaved(token, repo, posts);
+  const found = await findSaved(token, repo, fresh, { files });
   await remember(Object.fromEntries(Object.entries(found).map(([id, path]) => [source.key(id), path])));
-  return posts.filter((p) => !found[p.id]);
+  const posts = fresh.filter((p) => !found[p.id]);
+  // 목록이 비었을 때 이유를 보여 줄 수 있게 센 수도 함께 돌려준다 (블로그 글 수, 이미 저장된 글 수, 비공개라 뺀 글 수)
+  return { posts, total: all.length, saved: saveable.length - posts.length, privateHidden };
 }
 
 const MAX_CHECKS = 300; // 이미 저장된 글인지 확인하려고 읽는 파일 수 상한 (GitHub 요청 수 제한)
 
+// 저장소의 파일 목록 [{ path, sha }]. 못 읽으면 null, strict면 멈춘다 (빈 저장소는 []).
+async function repoFiles(token, repo, strict) {
+  try {
+    return await listFiles(token, repo);
+  } catch (e) {
+    if (e.status === 409) return [];
+    if (strict) throw stop('저장소 파일 목록을 읽지 못해 이미 저장된 글을 확인할 수 없어요. 잠시 뒤에 다시 해 주세요.');
+    console.warn('[BlogHub] 저장소 파일 목록을 못 읽어 이 브라우저 기록만 봐요', e);
+    return null;
+  }
+}
+
 // 이 브라우저에 기록은 없지만 저장소에 이미 파일이 있는 글 { 글 id: 경로 }.
 // 파일 이름으로 후보를 고르고, 파일 속 글 주소 줄이 같은지 확인한다 (다른 블로그의 같은 번호 글과 헷갈리지 않게).
 // strict: 말투를 바꿔 가져올 때. 이미 있는 글을 놓치면 돈을 다시 쓰고 덮어쓰므로, 목록을 못 읽으면 멈추고 상한 없이 다 확인한다.
-async function findSaved(token, repo, posts, { strict = false } = {}) {
-  const files = await listFiles(token, repo).catch((e) => {
-    if (e.status === 409) return []; // 빈 저장소
-    if (strict) throw stop('저장소 파일 목록을 읽지 못해 이미 저장된 글을 확인할 수 없어요. 잠시 뒤에 다시 해 주세요.');
-    console.warn('[BlogHub] 저장소 파일 목록을 못 읽어 이 브라우저 기록만 봐요', e);
-    return []; // 목록에 다시 떠도, 원래 말투로 다시 가져오면 내용이 같아 커밋이 생기지 않는다
-  });
+// files: 이미 읽어 둔 저장소 파일 목록 (없으면 여기서 읽는다)
+async function findSaved(token, repo, posts, { strict = false, files } = {}) {
+  files ??= await repoFiles(token, repo, strict);
+  if (!files) return {}; // 못 읽었다 (목록에 다시 떠도, 원래 말투로 다시 가져오면 내용이 같아 커밋이 생기지 않는다)
   const index = indexPostFiles(files);
   // shortcut: 목록 보기에서는 확인용 파일 읽기를 MAX_CHECKS개까지만 해서 일부 저장된 글이 목록에 다시 뜰 수 있다, 너무 자주 그러면 상한을 올리자
   const checks = posts
@@ -370,13 +388,18 @@ async function importAll(blog, username, token) {
   const { source, items, load, brief } = await postList(blog, username, (n) => status(`글 목록 불러오는 중 (${n}개)`));
   // 말투를 바꿔 가져올 때는 저장소에 이미 있는 글을 건너뛴다.
   // 다시 바꾸면 돈이 또 들고 매번 문장이 달라져 커밋이 생긴다. (원래 말투면 다시 저장해도 내용이 같아 커밋이 없다)
+  if (!items.length) return '블로그에서 글을 하나도 찾지 못했어요. 아이디와 로그인을 확인해 주세요.';
   let already = {};
+  if (setup) await status('저장소에 이미 있는 글 확인 중');
+  // 저장소를 못 읽으면 이미 있는 글을 몰라 다시 돈을 쓰게 되므로 말투를 바꿀 때는 멈춘다
+  const files = await repoFiles(token, repo, !!setup);
   if (setup) {
-    await status('저장소에 이미 있는 글 확인 중');
-    // 저장소를 못 읽으면 이미 있는 글을 몰라 다시 돈을 쓰게 되므로 멈춘다
-    already = await findSaved(token, repo, items.map(brief).filter(Boolean), { strict: true });
+    already = await findSaved(token, repo, items.map(brief).filter(Boolean), { strict: true, files });
     await remember(Object.fromEntries(Object.entries(already).map(([id, path]) => [source.key(id), path])));
   }
+  // 이 브라우저의 "저장했다"는 기록은 저장소에 실제 파일이 있을 때만 믿는다 (파일이 지워졌거나 저장소를 다시 만들었을 수 있다)
+  const hasFile = (key) => !!pathOf(key) && (!files || files.some((f) => f.path === pathOf(key)));
+  let committed = false; // 실제로 커밋이 만들어졌는지 (같은 내용이면 커밋이 없다)
   let saved = 0;
   let kept = 0;
   let privateSkipped = 0; // 말투를 바꾸느라 AI에 보내야 해서 건너뛴 비공개 글
@@ -384,14 +407,14 @@ async function importAll(blog, username, token) {
   let lastError = '';
   let stopped = null; // 키·연결 문제로 멈출 때: 이 묶음에서 이미 돈을 내고 바꾼 글은 커밋한 뒤 멈춘다
   for (let start = 0; start < items.length && !stopped; start += IMPORT_CHUNK) {
-    const files = {};
+    const chunkFiles = {}; // 이번 묶음에서 커밋할 파일들
     const deleteDirs = [];
     const saves = {};
     for (const [j, item] of items.slice(start, start + IMPORT_CHUNK).entries()) {
       const key = source.key(String(item.id));
       // 이미 저장된 글 (말투를 바꿔 가져올 때), 예전에 말투를 바꿔 저장한 글 (원래 말투로 덮어쓰지 않게)은
       // 내려받기 전에 건너뛴다
-      if ((setup && (pathOf(key) || already[String(item.id)])) || toneOf(key)) {
+      if ((setup && (hasFile(key) || already[String(item.id)])) || (toneOf(key) && hasFile(key))) {
         kept++;
         continue;
       }
@@ -423,7 +446,7 @@ async function importAll(blog, username, token) {
         continue;
       }
       const result = await postFiles(toned, backupImages, pathOf(key), base);
-      Object.assign(files, result.files);
+      Object.assign(chunkFiles, result.files);
       deleteDirs.push(...result.deleteDirs);
       saves[key] = { path: result.path, tone: setup?.tone };
     }
@@ -431,11 +454,12 @@ async function importAll(blog, username, token) {
     if (!count) continue;
     const end = Math.min(start + IMPORT_CHUNK, items.length);
     await status(`GitHub에 커밋하는 중 (${end}/${items.length})`);
-    await commitFiles(token, repo, {
-      files,
+    const result = await commitFiles(token, repo, {
+      files: chunkFiles,
       deleteDirs,
       message: `[${source.name}] 과거 글 가져오기 (${start + 1}~${end})`,
     });
+    committed ||= result.committed;
     await rememberPosts(saves); // 나눠 커밋하므로 중간에 멈춰도 여기까지는 저장된다. 말투도 기록해 나중에 고쳐도 같은 말투로.
     saved += count;
   }
@@ -447,6 +471,8 @@ async function importAll(blog, username, token) {
     (privateSkipped ? ` 비공개 글 ${privateSkipped}개는 AI에 보내지 않아 건너뜀.` : '') +
     (broken ? ` (못 읽은 글 ${broken}개는 건너뜀: ${lastError})` : '');
   if (!saved) return `가져올 글이 없어요.${skipped}`;
+  // 이미 같은 내용으로 저장돼 있으면 커밋이 안 생긴다. 새로 저장했다고 말하지 않는다.
+  if (!committed) return `확인한 글 ${saved}개는 저장소에 이미 같은 내용으로 있어서 새로 저장한 게 없어요.${skipped}`;
   return `과거 글 ${saved}개를 GitHub에 저장했어요.${skipped}`;
 }
 

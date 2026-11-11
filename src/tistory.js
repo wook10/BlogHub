@@ -1,7 +1,13 @@
 // 백그라운드에서 쓰는 티스토리 읽기. (티스토리 페이지 안의 요청 형식은 tistory-hook.js에 있다)
 // 공식 API가 없어서, 글 수정 화면(/manage/newpost/번호)에 들어 있는 글 정보(post: {...})를 읽는다.
 
-const PUBLIC = 20; // 티스토리 공개 범위: 0 비공개, 15 보호(비밀번호), 20 공개
+const PUBLIC_CODE = 20; // 티스토리 공개 범위 숫자: 0 비공개, 15 보호(비밀번호), 20 공개
+
+// 공개 글인지. 수정 화면은 20 같은 숫자로, 글 관리 목록은 "PUBLIC" 같은 글자로 알려 준다 (2026-11 확인).
+// 확실히 공개일 때만 공개로 보고 모르는 값은 비공개로 본다 (공개 저장소에 새지 않게).
+export const isPublic = (visibility) =>
+  (typeof visibility === 'string' || typeof visibility === 'number') && // 배열 같은 이상한 값이 숫자로 바뀌어 공개가 되지 않게
+  (String(visibility).trim().toUpperCase() === 'PUBLIC' || Math.abs(Number(visibility)) === PUBLIC_CODE);
 
 // 블로그 주소(https://아이디.tistory.com)만 받는다. 다른 주소로 로그인 쿠키를 보내지 않게.
 export function blogOrigin(url) {
@@ -44,8 +50,8 @@ export async function listPosts(origin, onPage) {
     for (const item of data.items) {
       const id = String(item.id);
       if (!/^\d+$/.test(id)) continue;
-      // 저장할 때(normalize)와 같은 규칙: 확실히 공개(20)일 때만 공개, 모르는 값은 비공개로 본다 (공개 저장소에 새지 않게)
-      posts.set(id, { id, title: String(item.title ?? ''), isPrivate: Math.abs(Number(item.visibility)) !== PUBLIC });
+      // 저장할 때(normalize)와 같은 규칙: 확실히 공개일 때만 공개, 모르는 값은 비공개로 본다 (공개 저장소에 새지 않게)
+      posts.set(id, { id, title: String(item.title ?? ''), isPrivate: !isPublic(item.visibility) });
     }
     await onPage?.(posts.size);
     if (!data.items.length || posts.size >= data.totalCount) break;
@@ -134,7 +140,7 @@ export function normalize(p, origin) {
     title: p.title,
     body: '',
     tags: Array.isArray(p.tags) ? p.tags : String(p.tags ?? '').split(',').map((t) => t.trim()).filter(Boolean),
-    is_private: Math.abs(Number(p.visibility)) !== PUBLIC,
+    is_private: !isPublic(p.visibility),
     is_temp: false, // 임시저장은 다른 주소(/manage/drafts)라 여기로 오지 않는다
     // 파일 이름에 쓰는 글 주소. 같은 제목의 글이 겹치지 않게 글 번호를 붙인다.
     url_slug: `${p.slogan || 'post'}-${id}`,

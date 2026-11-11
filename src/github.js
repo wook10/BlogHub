@@ -107,7 +107,7 @@ const COMMIT_RETRIES = 3;
 // files: { 경로: 문자열 | Uint8Array(이미지) | null(삭제) }
 // deleteDirs: 이 폴더 안의 파일 중 files에 없는 것은 지운다 (글에서 빠진 이미지 정리)
 // message: 문자열, 또는 커밋 전 저장소에 있던 경로 Set을 받아 문자열을 돌려주는 함수
-// 반환: 커밋 전 저장소에 있던 경로 Set. 바뀐 게 없으면 커밋하지 않는다.
+// 반환: 커밋 전 저장소에 있던 경로 Set (committed 속성: 실제로 커밋을 만들었는지). 바뀐 게 없으면 커밋하지 않는다.
 export async function commitFiles(token, repo, { files, deleteDirs = [], message }) {
   const { default_branch: branch } = await api(token, `/repos/${repo}`);
   await headSha(token, repo, branch); // 빈 저장소면 여기서 첫 커밋을 만든다 (blob을 올리기 전에 필요)
@@ -145,20 +145,20 @@ export async function commitFiles(token, repo, { files, deleteDirs = [], message
     for (const path of has) {
       if (!(path in files) && deleteDirs.some((dir) => path.startsWith(`${dir}/`))) entries.push(deleted(path));
     }
-    if (!entries.length) return has;
+    if (!entries.length) return Object.assign(has, { committed: false });
 
     const newTree = await api(token, `/repos/${repo}/git/trees`, {
       method: 'POST',
       body: { base_tree: head.tree.sha, tree: entries },
     });
-    if (newTree.sha === head.tree.sha) return has; // 내용이 그대로면 빈 커밋을 만들지 않는다
+    if (newTree.sha === head.tree.sha) return Object.assign(has, { committed: false }); // 내용이 그대로면 빈 커밋을 만들지 않는다
     const commit = await api(token, `/repos/${repo}/git/commits`, {
       method: 'POST',
       body: { message: typeof message === 'function' ? message(has) : message, tree: newTree.sha, parents: [parent] },
     });
     try {
       await api(token, `/repos/${repo}/git/refs/heads/${branch}`, { method: 'PATCH', body: { sha: commit.sha } });
-      return has;
+      return Object.assign(has, { committed: true });
     } catch (e) {
       if (e.status !== 422 || attempt >= COMMIT_RETRIES) throw e;
     }

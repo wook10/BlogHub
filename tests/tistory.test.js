@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { categoryName, imagesToHtml, unescapeImgSrc, parsePostPage, normalize, fetchPost, blogOrigin, listPosts, originOf } from '../src/tistory.js';
+import { isPublic, categoryName, imagesToHtml, unescapeImgSrc, parsePostPage, normalize, fetchPost, blogOrigin, listPosts, originOf } from '../src/tistory.js';
 
 const origin = 'https://me.tistory.com';
 const raw = {
@@ -158,4 +158,21 @@ test('categoryName: 블로그 정보에서 카테고리 이름 (하위 분류 �
   assert.equal(categoryName(page, 0), null); // 분류 없음
   assert.equal(categoryName('  window.Config = {\n    post: {"id":1},\n  }', 5), null); // 블로그 정보가 없어도 글은 저장
   assert.equal(categoryName('  window.Config = {\n    blog: {깨짐,\n  }', 5), null);
+});
+
+test('공개 범위: 수정 화면의 숫자(20)와 글 관리 목록의 글자("PUBLIC") 모두 공개로 알아보고, 모르는 값은 비공개', async () => {
+  for (const v of [20, '20', -20, 'PUBLIC', 'public', ' PUBLIC ']) assert.equal(isPublic(v), true, String(v));
+  for (const v of [0, 15, 'PRIVATE', 'PROTECTED', 'N', '', null, undefined, 'unknown', 'PUBLIC_PROTECTED', 'NOT_PUBLIC', true, [20], { v: 20 }]) assert.equal(isPublic(v), false, String(v));
+
+  // 2026-11에 실제로 받은 목록 응답의 모양: 공개 글이 "PUBLIC"으로 온다
+  globalThis.fetch = async (url) => ({
+    ok: true,
+    url,
+    json: async () => ({ totalCount: 3, items: [{ id: '11', title: 'ㅁㅇㄴ', visibility: 'PUBLIC' }, { id: '10', title: '테스트', visibility: 'PUBLIC' }, { id: '9', title: '비밀', visibility: 'PRIVATE' }] }),
+  });
+  assert.deepEqual(await listPosts(origin), [
+    { id: '11', title: 'ㅁㅇㄴ', isPrivate: false },
+    { id: '10', title: '테스트', isPrivate: false },
+    { id: '9', title: '비밀', isPrivate: true },
+  ]);
 });

@@ -144,3 +144,70 @@ test('한 번에 모두: 키가 없으면 바로 멈추고 안내한다', async 
   assert.match(data.lastSync.message, /Gemini API 키/);
   assert.equal(world.gemini.length, 0);
 });
+
+test('목록 보고 하나씩: 비었을 때 이유를 셀 수 있게 돌려준다 (블로그 글 수, 이미 저장된 글, 비공개라 뺀 글)', async () => {
+  reset({ tone: 'original', savePrivate: false, paths: { 'me/blog': { a: 'posts/a.md' } } });
+  world.posts = [velogPost('a', false), velogPost('b', true)];
+  world.tree = ['posts/a.md']; // 저장소에 파일이 실제로 있다
+  let r = await send({ type: 'missingPosts', blog: 'velog', username: 'me' });
+  assert.ok(r.ok, r.error);
+  assert.deepEqual(r.data, { posts: [], total: 2, saved: 1, privateHidden: 1 });
+
+  // 비공개 저장을 켜면 비공개 글이 목록에 나온다
+  data.savePrivate = true;
+  r = await send({ type: 'missingPosts', blog: 'velog', username: 'me' });
+  assert.deepEqual(r.data.posts.map((p) => p.id), ['b']);
+  assert.equal(r.data.privateHidden, 0);
+
+  // 블로그에 글이 하나도 없으면 total이 0
+  world.posts = [];
+  r = await send({ type: 'missingPosts', blog: 'velog', username: 'me' });
+  assert.equal(r.data.total, 0);
+});
+
+test('목록 보고 하나씩: 이 브라우저의 "저장했다" 기록이 틀리면(저장소에 파일이 없음) 믿지 않고 목록에 보여 준다', async () => {
+  // a: 기록은 있는데 저장소에 파일이 없음 (파일을 지웠거나 저장소를 다시 만듦), b: 기록도 있고 파일도 있음
+  reset({ tone: 'original', paths: { 'me/blog': { a: 'posts/a.md', b: 'posts/b.md' } }, tones: { 'me/blog': { a: 'first' } } });
+  world.posts = [velogPost('a', false), velogPost('b', false)];
+  world.tree = ['posts/b.md'];
+  const r = await send({ type: 'missingPosts', blog: 'velog', username: 'me' });
+  assert.deepEqual(r.data.posts.map((p) => p.id), ['a']);
+  assert.equal(r.data.saved, 1);
+  assert.ok(!('a' in data.paths['me/blog']) && 'b' in data.paths['me/blog'], '틀린 기록만 지운다');
+});
+
+test('한 번에 모두: 저장소에 파일이 없는 글은 말투를 바꾼 기록이 있어도 건너뛰지 않고 다시 가져온다', async () => {
+  reset({ tone: 'first', paths: { 'me/blog': { a: 'posts/a.md' } }, tones: { 'me/blog': { a: 'first' } } });
+  world.posts = [velogPost('a', false)];
+  world.tree = []; // 저장소에 a.md가 없다
+  await send({ type: 'import', blog: 'velog', username: 'me' });
+  await settle();
+  assert.equal(world.gemini.length, 1);
+  assert.match(data.lastSync.message, /1개를 GitHub에 저장/);
+});
+
+test('한 번에 모두: 블로그에서 글을 하나도 못 찾으면 그렇게 알린다 (아이디 오타)', async () => {
+  reset({ tone: 'original' });
+  world.posts = [];
+  await send({ type: 'import', blog: 'velog', username: 'me' });
+  await settle();
+  assert.match(data.lastSync.message, /글을 하나도 찾지 못했어요/);
+});
+
+test('한 번에 모두: 이미 같은 내용으로 저장돼 있으면 새로 저장했다고 말하지 않는다', async () => {
+  reset({ tone: 'original' });
+  world.posts = [velogPost('a', false)];
+  await send({ type: 'import', blog: 'velog', username: 'me' });
+  await settle();
+  assert.match(data.lastSync.message, /1개를 GitHub에 저장했어요/); // 처음에는 저장소에 없으니 실제로 저장
+  // 두 번째: 저장소가 이미 같은 내용 (가짜 GitHub가 새 트리를 현재 트리와 같게 돌려줌)
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (/\/git\/trees$/.test(String(url)) && init?.method === 'POST') return json({ sha: 't1' }); // 현재 트리 sha와 같다 → 바뀐 게 없다
+    return real(url, init);
+  };
+  await send({ type: 'import', blog: 'velog', username: 'me' });
+  await settle();
+  globalThis.fetch = real;
+  assert.match(data.lastSync.message, /이미 같은 내용으로 있어서 새로 저장한 게 없어요/);
+});

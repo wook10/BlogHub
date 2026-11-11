@@ -113,6 +113,7 @@ button:disabled { cursor: default; opacity: 0.55; }
 #missing li { display: flex; align-items: center; gap: 6px; padding: 5px 6px 5px 10px; font-size: 12px; border-bottom: 1px solid var(--line); }
 #missing li:last-child { border-bottom: none; }
 #missing span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#missing li.note span { white-space: normal; line-height: 1.5; }
 #missing button { height: 24px; padding: 0 8px; font-size: 12px; }
 
 #main.settings-open > :not(#settings) { display: none; }

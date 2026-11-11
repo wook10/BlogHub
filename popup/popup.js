@@ -220,10 +220,15 @@ $('list-btn').onclick = async () => {
   listing = $('list-btn').disabled = true;
   list.hidden = false;
   list.replaceChildren(item('목록을 불러오는 중…'));
-  const posts = await send({ type: 'missingPosts', blog, username }).catch(() => null);
+  const found = await send({ type: 'missingPosts', blog, username }).catch(() => null);
   listing = $('list-btn').disabled = false;
-  if (!posts) return (list.hidden = true);
-  if (!posts.length) return list.replaceChildren(item('저장소에 없는 글이 없어요.'));
+  if (!found) return (list.hidden = true);
+  const { posts, total, saved, privateHidden } = found;
+  if (!posts.length) {
+    const note = item(emptyReason(total, saved, privateHidden));
+    note.className = 'note'; // 이유가 길어서 줄바꿈을 허용한다
+    return list.replaceChildren(note);
+  }
   list.replaceChildren(
     ...posts.map((p) => {
       const btn = document.createElement('button');
@@ -258,6 +263,15 @@ $('list-btn').onclick = async () => {
   list.style.maxHeight =
     rows.length > 5 ? `${rows[5].getBoundingClientRect().top - rows[0].getBoundingClientRect().top}px` : '';
 };
+
+// 목록이 비었을 때 왜 비었는지 (블로그 글이 없는지, 이미 저장됐는지, 비공개라 뺐는지)
+function emptyReason(total, saved, privateHidden) {
+  if (!total) return '블로그에서 글을 하나도 찾지 못했어요. 아이디와 로그인을 확인해 주세요.';
+  const parts = [`블로그 글 ${total}개`];
+  if (saved) parts.push(`이미 저장된 글 ${saved}개`);
+  if (privateHidden) parts.push(`비공개 글 ${privateHidden}개 (⚙ 설정에서 "비공개 글도 GitHub에 저장"을 켜면 보여요)`);
+  return `저장소에 없는 글이 없어요. ${parts.join(', ')}.`;
+}
 
 function item(text, button) {
   const li = document.createElement('li');
